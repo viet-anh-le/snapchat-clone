@@ -1,0 +1,14 @@
+@reference "tailwindcss";
+
+header{
+  @apply text-xs text-[#53575b] font-bold border-b border-gray-200;
+}
+
+#header-search{
+  @apply h-10 py-3 pr-8 px-10 bg-[#F0F1F2] rounded-3xl w-[180px]
+}
+
+input::placeholder{
+  color: #53575b;
+  @apply font-bold text-xs
+}

@@ -1,0 +1,50 @@
+.blur-container {
+  width: 30%;
+  height: 90%;
+  display: flex;
+  position: relative;
+  aspect-ratio: 0.565 / 1;
+  background: rgba(0, 0, 0, 0.2);
+  mix-blend-mode: normal;
+  backdrop-filter: blur(100px);
+  -webkit-backdrop-filter: blur(100px);
+  border-radius: 20px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+button {
+  cursor: pointer;
+}
+
+.input {
+  background-color: #292929;
+  border-radius: 20px;
+  border: none;
+  padding: 8px;
+}
+
+.ant-input::placeholder {
+  color: #535353;
+  font-size: 14px;
+}
+
+.ant-input-outlined:hover {
+  background-color: #292929;
+}
+
+.ant-input-outlined:focus {
+  background-color: #292929;
+}
+
+.ant-input {
+  caret-color: #00d4ff !important;
+  color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .blur-container {
+    width: 90%;
+    height: 80%;
+  }
+}

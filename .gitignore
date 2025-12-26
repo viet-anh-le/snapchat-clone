@@ -1,0 +1,31 @@
+# Common
+node_modules/
+dist/
+build/
+.env
+.env.local
+.DS_Store
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# Editor
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+
+# Frontend build
+client/node_modules/
+client/dist/
+client/.env
+
+# Backend build
+server/node_modules/
+server/.env
+server/dist/
