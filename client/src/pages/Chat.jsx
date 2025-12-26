@@ -21,6 +21,7 @@ import AddUser from "../components/pages/chat/sidebar/AddUser";
 import CameraModal from "../components/pages/chat/main/CameraModal";
 import SnapViewer from "../components/pages/chat/main/SnapViewer";
 import CameraUI from "../components/pages/chat/main/CameraUI";
+import TypingIndicator from "../components/pages/chat/main/TypingIndicator";
 import { useAuth } from "../context/AuthContext";
 
 export default function Chat() {
@@ -34,6 +35,9 @@ export default function Chat() {
   const [chatMetadata, setChatMetadata] = useState(null);
   const [memberDetails, setMemberDetails] = useState({});
   const [openDeleteId, setOpenDeleteId] = useState(null);
+  const [typingUsers, setTypingUsers] = useState(new Set());
+  const [isSocketReady, setIsSocketReady] = useState(false);
+  const typingTimeoutRef = useRef(null);
 
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -106,6 +110,31 @@ export default function Chat() {
     setShowEmojiPicker(false);
 
     websocketService.sendMessage(selectedChatId, messageText);
+  };
+
+  const handleInputChange = (e) => {
+    setText(e.target.value);
+
+    if (websocketService.isConnected) {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
+      websocketService.sendTyping(selectedChatId);
+
+      typingTimeoutRef.current = setTimeout(() => {
+        websocketService.sendStopTyping(selectedChatId);
+      }, 2000);
+    }
+  };
+
+  const getTypingUserDetails = (userId) => {
+    const userInfo = memberDetails[userId];
+    if (userInfo) {
+      return {
+        displayName: userInfo.displayName || "Unknown",
+        photoURL: userInfo.photoURL || "/default-avatar.png",
+      };
+    }
+    return { photoURL: "/default-avatar.png", displayName: "Someone" };
   };
 
   useEffect(() => {
@@ -207,6 +236,7 @@ export default function Chat() {
         }
 
         console.log("✅ WebSocket ready, joining chat:", currentChatId);
+        setIsSocketReady(true);
 
         await new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -362,6 +392,28 @@ export default function Chat() {
     }
   }, [selectedChatId, chatMetadata, receiver, user.uid]);
 
+  useEffect(() => {
+    if (!isSocketReady || !selectedChatId) return;
+    const cleanupTyping = websocketService.onTypingStatus((data) => {
+      // Chỉ xử lý nếu đúng chat room hiện tại
+      if (data.chatId !== selectedChatId) return;
+
+      setTypingUsers((prev) => {
+        const newSet = new Set(prev);
+        if (data.type === "start") {
+          newSet.add(data.userId);
+        } else {
+          newSet.delete(data.userId);
+        }
+        return newSet;
+      });
+    });
+
+    return () => {
+      cleanupTyping();
+    };
+  }, [selectedChatId, isSocketReady]);
+
   return (
     <>
       {close ? (
@@ -508,7 +560,9 @@ export default function Chat() {
                               >
                                 <button
                                   className="absolute -top-2 text-gray-400 hover:text-white text-xs"
-                                  style={isOwner ? { left: -20 } : { right: -20 }}
+                                  style={
+                                    isOwner ? { left: -20 } : { right: -20 }
+                                  }
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setOpenDeleteId(
@@ -524,6 +578,16 @@ export default function Chat() {
                         );
                       })
                     )}
+                    {Array.from(typingUsers).map((userId) => {
+                      const userInfo = getTypingUserDetails(userId);
+                      return (
+                        <TypingIndicator
+                          key={userId}
+                          userPhoto={userInfo.photoURL}
+                          userName={userInfo.displayName}
+                        />
+                      );
+                    })}
                     <div ref={messagesEndRef} />
                   </div>
                 )}
@@ -553,7 +617,7 @@ export default function Chat() {
                     placeholder="Send a chat"
                     ref={inputRef}
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={handleInputChange}
                     onPressEnter={handleSend}
                     onFocus={async () => {
                       if (selectedChatId) {

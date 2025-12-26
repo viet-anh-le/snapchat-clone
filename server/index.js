@@ -82,6 +82,24 @@ io.on("connection", (socket) => {
     } socket(s)`
   );
 
+  // User bắt đầu gõ
+  socket.on("typing", (data) => {
+    const { chatId } = data;
+    socket.to(`chat:${chatId}`).emit("user-typing", {
+      userId: socket.userId,
+      chatId,
+    });
+  });
+
+  // User ngừng gõ
+  socket.on("stop-typing", (data) => {
+    const { chatId } = data;
+    socket.to(`chat:${chatId}`).emit("user-stop-typing", {
+      userId: socket.userId,
+      chatId,
+    });
+  });
+
   // ========== INCOMING CALL EVENTS ==========
 
   // Handle incoming call notification

@@ -213,6 +213,37 @@ class WebSocketService {
     return () => this.socket.off("error", callback);
   }
 
+  // ========== Typing ================
+  sendTyping(chatId) {
+    if (this.socket) {
+      this.socket.emit("typing", { chatId });
+    }
+  }
+
+  sendStopTyping(chatId) {
+    if (this.socket) this.socket.emit("stop-typing", { chatId });
+  }
+
+  onTypingStatus(callback) {
+    if (!this.socket) return () => {};
+
+    const handleStart = (data) => {
+      callback({ type: "start", ...data });
+    };
+
+    const handleStop = (data) => {
+      callback({ type: "stop", ...data });
+    };
+
+    this.socket.on("user-typing", handleStart);
+    this.socket.on("user-stop-typing", handleStop);
+
+    return () => {
+      this.socket?.off("user-typing", handleStart);
+      this.socket?.off("user-stop-typing", handleStop);
+    };
+  }
+
   // ========== WEBRTC METHODS ==========
 
   joinVideoRoom(roomId, profile = {}) {
