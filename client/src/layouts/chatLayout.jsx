@@ -61,7 +61,7 @@ export default function ChatLayout() {
         {/* Backdrop for mobile sidebar */}
         {isMobile && sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-30 sm:hidden"
+            className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-30 md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
@@ -70,14 +70,14 @@ export default function ChatLayout() {
         <div
           className={`${
             isMobile ? "fixed" : "relative"
-          } inset-y-0 left-0 sm:static sm:inset-auto z-40 sm:z-auto h-full w-[82vw] max-w-[340px] sm:w-auto transform transition-transform duration-300 ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full sm:translate-x-0"
+          } inset-y-0 left-0 md:static md:inset-auto z-40 md:z-auto h-full w-[82vw] max-w-[340px] md:w-auto transform transition-transform duration-300 ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
           }`}
         >
           <div className="relative h-full">
             {isMobile && (
               <button
-                className="sm:hidden absolute top-3 right-3 z-50 w-9 h-9 rounded-full bg-[#1E1E1E] border border-gray-700 text-white grid place-content-center"
+                className="md:hidden absolute top-3 right-3 z-50 w-9 h-9 rounded-full bg-[#1E1E1E] border border-gray-700 text-white grid place-content-center"
                 onClick={() => setSidebarOpen(false)}
                 aria-label="Đóng danh sách chat"
               >
@@ -92,7 +92,7 @@ export default function ChatLayout() {
         <div className="relative w-full h-full flex flex-col">
           {isMobile && !sidebarOpen && (
             <button
-              className="sm:hidden absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-2 rounded-full bg-[#1E1E1E] text-white shadow-lg border border-gray-700"
+              className="md:hidden absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-2 rounded-full bg-[#1E1E1E] text-white shadow-lg border border-gray-700"
               onClick={() => setSidebarOpen(true)}
               aria-label="Mở danh sách chat"
             >
