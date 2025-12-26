@@ -23,7 +23,9 @@ import { useAuth } from "../../context/AuthContext.jsx";
 export default function Header() {
   const { user, logout } = useAuth();
   const [theme, setTheme] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("theme") || "light" : "light"
+    typeof window !== "undefined"
+      ? localStorage.getItem("theme") || "light"
+      : "light"
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -97,7 +99,7 @@ export default function Header() {
   };
 
   return (
-    <header className="pt-6 pb-2 grid grid-cols-3 md:grid-cols-3 sm:grid-cols-2 xs:grid-cols-2 relative">
+    <header className="pt-6 pb-2 grid grid-cols-3 md:grid-cols-3 sm:grid-cols-2 xs:grid-cols-2 sticky top-0 z-50 bg-white transition-colors">
       {/* Logo + Search */}
       <div className="flex items-center gap-2">
         <div>
@@ -108,23 +110,15 @@ export default function Header() {
             <Logo width={24} height={24} />
           </a>
         </div>
-        <div className="relative hidden sm:block">
-          <span className="absolute mt-2 ml-2">
-            <SearchOutlined style={{ fontSize: "24px" }} />
-          </span>
-          <input
-            type="text"
-            placeholder="Search"
-            id="header-search"
-            className="pl-10 pr-4 py-2 border rounded-md focus:outline-none"
-          />
+        <div className="text-black text-2xl font-black tracking-tight">
+          SnapProject
         </div>
       </div>
 
       {/* Middle features - Desktop only */}
       <div
         id="header-features"
-        className="flex gap-8 max-w-[384px] place-self-center cursor-pointer hidden md:flex"
+        className="flex gap-8 max-w-[384px] place-self-center cursor-pointer md:flex"
       >
         <Link to={"/stories"}>
           <div className="flex flex-col items-center hover:opacity-70">
@@ -165,7 +159,11 @@ export default function Header() {
 
         {/* Desktop user dropdown */}
         {user ? (
-          <Dropdown menu={{ items, onClick }} trigger={["click"]} className="hidden sm:block">
+          <Dropdown
+            menu={{ items, onClick }}
+            trigger={["click"]}
+            className="hidden sm:block"
+          >
             <a href="#" onClick={(e) => e.preventDefault()}>
               <div className="flex items-center gap-2">
                 <Avatar

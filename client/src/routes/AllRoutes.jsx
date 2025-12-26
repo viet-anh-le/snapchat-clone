@@ -16,12 +16,12 @@ import EditProfile from "../components/pages/profile/EditProfile";
 const routes = [
   {
     path: "/",
-    element: <LandingPage />,
-  },
-  {
-    path: "/camera",
     element: <DefaultLayout />,
     children: [
+      {
+        path: "/",
+        element: <LandingPage />,
+      },
       { path: "/camera", element: <Home /> },
       { path: "profile", element: <ProfilePage /> },
       { path: "settings", element: <SettingsPage /> },

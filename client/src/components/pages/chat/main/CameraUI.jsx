@@ -3,23 +3,63 @@ import { useAuth } from "../../../../context/AuthContext";
 import { CloseOutlined, SendOutlined } from "@ant-design/icons";
 import {
   X,
-  RefreshCw,
   Zap,
-  Sparkles,
-  Glasses,
-  Loader2,
-  Video,
+  Heart,
   Camera as CameraIcon,
+  Cat,
+  Glasses,
+  Ghost,
+  Smile,
+  Loader2,
+  Megaphone,
+  Eye,
+  User,
+  RefreshCw,
 } from "lucide-react";
 
 import ARView from "../camera/ARView";
 import SendModal from "../camera/SendModal";
 
 const FILTERS = [
-  { id: "none", name: "Normal", icon: <X size={20} /> },
-  { id: "mesh", name: "Cyber", icon: <Zap size={20} /> },
-  { id: "clown", name: "Clown", icon: <RefreshCw size={20} /> },
-  { id: "mask", name: "Hero", icon: <Glasses size={20} /> },
+  { id: "none", name: "Normal", icon: <X size={20} />, color: "bg-gray-600" },
+  {
+    id: "big_mouth",
+    name: "Yapper",
+    icon: <Megaphone size={20} />,
+    color: "bg-orange-500",
+  },
+  {
+    id: "bug_eyes",
+    name: "Buggin",
+    icon: <Eye size={20} />,
+    color: "bg-purple-500",
+  },
+  {
+    id: "schnoz",
+    name: "Schnoz",
+    icon: <User size={20} />,
+    color: "bg-yellow-600",
+  },
+  {
+    id: "wacky",
+    name: "Wacky",
+    icon: <Smile size={20} />,
+    color: "bg-blue-500",
+  },
+  { id: "kitty", name: "Kitty", icon: <Cat size={20} />, color: "bg-pink-500" },
+  {
+    id: "boss",
+    name: "Boss",
+    icon: <Glasses size={20} />,
+    color: "bg-yellow-500",
+  },
+  {
+    id: "alien",
+    name: "Alien",
+    icon: <Ghost size={20} />,
+    color: "bg-green-500",
+  },
+  { id: "cyber", name: "Cyber", icon: <Zap size={20} />, color: "bg-cyan-500" },
 ];
 
 const CameraUI = () => {
@@ -103,7 +143,7 @@ const CameraUI = () => {
               <div className="absolute bottom-0 w-full p-6 flex flex-col items-center z-20 bg-linear-to-t from-black/60 to-transparent">
                 {!capturedImage ? (
                   <>
-                    <div className="flex gap-4 mb-4 overflow-x-auto w-full justify-center">
+                    <div className="flex gap-4 mb-4 overflow-x-auto w-full justify-start px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                       {FILTERS.map((f) => (
                         <button
                           key={f.id}
