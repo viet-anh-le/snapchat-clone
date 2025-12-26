@@ -31,7 +31,8 @@ const formatTime = (timestamp) => {
 };
 
 export default function UserChat({ receiver, chat, isGroup }) {
-  const { setClose, setSelectedChatId, setReceiver } = useContext(ChatContext);
+  const { setClose, setSelectedChatId, setReceiver, isMobile, setSidebarOpen } =
+    useContext(ChatContext);
   const { user } = useAuth();
 
   const lastMessage = chat?.lastMessage || "No messages yet";
@@ -56,6 +57,9 @@ export default function UserChat({ receiver, chat, isGroup }) {
         setSelectedChatId(chat?.chatId);
         setReceiver(receiver);
         setClose(false);
+        if (isMobile && setSidebarOpen) {
+          setSidebarOpen(false);
+        }
 
         if (hasUnreadMessage) {
           // Optimistic update: mark as seen immediately
