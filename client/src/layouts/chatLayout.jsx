@@ -25,7 +25,10 @@ export default function ChatLayout() {
       setIsMobile(mobileView);
 
       // Only toggle sidebar when crossing the breakpoint to avoid closing it while open
-      if (lastIsMobile.current === null || lastIsMobile.current !== mobileView) {
+      if (
+        lastIsMobile.current === null ||
+        lastIsMobile.current !== mobileView
+      ) {
         setSidebarOpen(!mobileView);
         lastIsMobile.current = mobileView;
       }
@@ -65,7 +68,9 @@ export default function ChatLayout() {
 
         {/* Sidebar - slides in on mobile, static on tablet/desktop */}
         <div
-          className={`${isMobile ? "fixed" : "relative"} inset-y-0 left-0 sm:static sm:inset-auto z-40 sm:z-auto h-full w-[82vw] max-w-[320px] sm:w-auto transform transition-transform duration-300 ${
+          className={`${
+            isMobile ? "fixed" : "relative"
+          } inset-y-0 left-0 sm:static sm:inset-auto z-40 sm:z-auto h-full w-[82vw] max-w-[340px] sm:w-auto transform transition-transform duration-300 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full sm:translate-x-0"
           }`}
         >
@@ -82,7 +87,7 @@ export default function ChatLayout() {
             <SideBar />
           </div>
         </div>
-        
+
         {/* Main chat area */}
         <div className="relative w-full h-full flex flex-col">
           {isMobile && !sidebarOpen && (
