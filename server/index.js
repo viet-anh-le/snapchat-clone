@@ -7,7 +7,8 @@ const path = require("path");
 const crypto = require("crypto");
 
 try {
-  const serviceAccount = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const serviceAccount =
+    process.env.GOOGLE_APPLICATION_CREDENTIALS || "./firebase-admin.json";
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });

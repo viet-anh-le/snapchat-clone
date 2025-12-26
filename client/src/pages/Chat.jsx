@@ -372,12 +372,12 @@ export default function Chat() {
       ) : (
         <div className="h-screen relative flex flex-col">
           <AddUser />
-          <div className="p-2 bg-[#121212] flex-1 flex flex-col min-h-0">
+          <div className="p-2 sm:p-3 bg-[#121212] flex-1 flex flex-col min-h-0">
             <Header
               setClose={setClose}
               receiver={{ ...currentChatInfo, chatId: selectedChatId }}
             />
-            <div className="p-3 border-gray-700 rounded-2xl bg-[#1E1E1E] flex-1 flex flex-col min-h-0">
+            <div className="p-2 sm:p-3 border-gray-700 rounded-2xl bg-[#1E1E1E] flex-1 flex flex-col min-h-0">
               <div
                 ref={messagesContainerRef}
                 className="flex-1 overflow-y-auto min-h-0"
@@ -387,7 +387,7 @@ export default function Chat() {
                     Select a chat to start messaging
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2 p-2">
+                  <div className="flex flex-col gap-2 p-1 sm:p-2">
                     {messages.length === 0 ? (
                       <div className="text-gray-400">No messages yet</div>
                     ) : (
@@ -399,7 +399,7 @@ export default function Chat() {
                         return (
                           <div
                             key={m.id || i}
-                            className={`flex gap-2 max-w-[80%] ${
+                            className={`flex gap-2 max-w-full sm:max-w-[80%] ${
                               isOwner
                                 ? "self-end flex-row-reverse"
                                 : "self-start"
@@ -529,14 +529,14 @@ export default function Chat() {
                 )}
               </div>
 
-              <div className="grid grid-cols-[1fr_20fr_1fr_1fr] place-content-center gap-3 mt-4 relative shrink-0">
+              <div className="grid grid-cols-[0.9fr_12fr_0.9fr_0.9fr] sm:grid-cols-[1fr_16fr_1fr_1fr] md:grid-cols-[1fr_20fr_1fr_1fr] place-content-center gap-2 sm:gap-3 mt-4 relative shrink-0">
                 {showEmojiPicker && (
-                  <div className="absolute bottom-12 right-0 z-50 shadow-lg">
+                  <div className="absolute bottom-12 right-0 z-50 shadow-lg w-[280px] max-w-[90vw]">
                     <EmojiPicker
                       onEmojiClick={handleEmojiClick}
                       theme="dark"
-                      width={400}
-                      height={400}
+                      width={280}
+                      height={320}
                     />
                   </div>
                 )}
