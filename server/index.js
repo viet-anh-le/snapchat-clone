@@ -5,7 +5,7 @@ const cors = require("cors");
 const admin = require("firebase-admin");
 const path = require("path");
 const crypto = require("crypto");
-
+require("dotenv").config();
 try {
   const serviceAccount =
     process.env.GOOGLE_APPLICATION_CREDENTIALS || "./firebase-admin.json";

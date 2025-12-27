@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, LogIn, Sparkles, Filter } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useStoryData } from '../../../hooks/useStoryData';
-import StoryCreator from './StoryCreator'; // Your existing creator component
+import StoryCreator from './StoryCreator';
 
-// Import UI Components from the file above
+// Import UI Components từ file bên ngoài như cấu trúc cũ
 import { 
   StoryCircle, 
   TrendingCard, 
   StoryViewer, 
   StorySkeleton, 
   CardSkeleton 
-} from './StoryComponents'; // Adjust path
+} from './StoryComponents'; 
 
 export default function StoriesPage() {
   const { user, loginWithGoogle } = useAuth();
@@ -19,6 +19,28 @@ export default function StoriesPage() {
   
   const [isCreatorOpen, setIsCreatorOpen] = useState(false);
   const [viewerState, setViewerState] = useState({ isOpen: false, playlist: [], index: 0 });
+
+  // --- LOGIC GOM NHÓM: Group friends' stories by username ---
+  const uniqueFriends = useMemo(() => {
+    if (!friendsStories) return [];
+    
+    const groups = {};
+    friendsStories.forEach(story => {
+      // Dùng username làm key để gom nhóm
+      if (!groups[story.username]) {
+        groups[story.username] = {
+          username: story.username,
+          avatar: story.avatar,
+          playlist: [] // Tạo playlist riêng cho user này
+        };
+      }
+      // Đẩy story vào playlist của user đó
+      groups[story.username].playlist.push(story);
+    });
+
+    return Object.values(groups);
+  }, [friendsStories]);
+  // ------------------------------------------------
 
   const handleCreate = async () => {
     if (!user) await loginWithGoogle();
@@ -32,7 +54,7 @@ export default function StoriesPage() {
   return (
     <div className="min-h-screen bg-[#FAFAFA] pb-20 font-sans selection:bg-purple-100">
       
-      {/* 1. Glass Header */}
+      {/* 1. Header */}
       <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm transition-all">
         <div className="container mx-auto max-w-6xl px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-2.5">
@@ -59,7 +81,6 @@ export default function StoriesPage() {
                     <span className="text-sm">Login</span>
                 </>
             )}
-            {/* Shimmer overlay on button */}
             <div className="absolute inset-0 -z-10 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:animate-shimmer" />
           </button>
         </div>
@@ -67,13 +88,14 @@ export default function StoriesPage() {
 
       <div className="container mx-auto max-w-6xl px-4 space-y-8 pt-6">
 
-        {/* 2. Stories Rail (My Story + Friends) */}
+        {/* 2. Stories Rail (My Story + Friends Grouped) */}
         <section>
           <div className="flex gap-4 overflow-x-auto pb-6 pt-2 scrollbar-hide px-1">
             {loading ? (
                Array(6).fill(0).map((_, i) => <StorySkeleton key={i} />)
             ) : (
               <>
+                {/* A. My Story */}
                 {user && (
                   <StoryCircle
                     isUser={true}
@@ -84,18 +106,20 @@ export default function StoriesPage() {
                   />
                 )}
                 
-                {friendsStories.map((story, index) => (
+                {/* B. Friends Stories (Grouped) */}
+                {uniqueFriends.map((friendGroup) => (
                   <StoryCircle
-                    key={story.id}
+                    key={friendGroup.username}
                     isUser={false}
-                    username={story.username}
-                    userPhoto={story.avatar}
-                    storyCount={1}
-                    onClick={() => openViewer(friendsStories, index)}
+                    username={friendGroup.username}
+                    userPhoto={friendGroup.avatar}
+                    storyCount={friendGroup.playlist.length}
+                    // Quan trọng: Truyền playlist riêng của friend đó vào viewer
+                    onClick={() => openViewer(friendGroup.playlist, 0)}
                   />
                 ))}
                 
-                {friendsStories.length === 0 && !loading && (
+                {uniqueFriends.length === 0 && !loading && (
                     <div className="flex flex-col justify-center px-4 text-gray-400 text-xs italic border-l border-gray-200 ml-2">
                         <span>No updates from friends.</span>
                     </div>
@@ -136,7 +160,6 @@ export default function StoriesPage() {
       {/* 4. Creator Modal */}
       {isCreatorOpen && user && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            {/* Pass onClose correctly to your existing creator */}
             <StoryCreator currentUser={user} onClose={() => setIsCreatorOpen(false)} />
         </div>
       )}

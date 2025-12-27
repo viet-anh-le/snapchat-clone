@@ -126,10 +126,10 @@ export default function Header() {
             <p className="text-xs">Stories</p>
           </div>
         </Link>
-        <div className="flex flex-col items-center hover:opacity-70">
+        {/* <div className="flex flex-col items-center hover:opacity-70">
           <FireOutlined style={{ fontSize: "28px" }} />
           <p className="text-xs">Spotlight</p>
-        </div>
+        </div> */}
         <Link to={"/chat"}>
           <div className="flex flex-col items-center hover:opacity-70">
             <MessageOutlined style={{ fontSize: "28px" }} />

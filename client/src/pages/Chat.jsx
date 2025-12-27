@@ -2,13 +2,7 @@ import "./chat.css";
 
 import { useContext, useEffect, useState, useRef } from "react";
 import { ChatContext } from "../context/ChatContext";
-import EmojiPicker from "emoji-picker-react";
-import {
-  CameraFilled,
-  SmileOutlined,
-  FileImageOutlined,
-} from "@ant-design/icons";
-import { Input, Image, Avatar, Popover, Button } from "antd";
+import { Avatar, Popover, Button, Image } from "antd";
 
 import { storage, db } from "../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -23,14 +17,14 @@ import SnapViewer from "../components/pages/chat/main/SnapViewer";
 import CameraUI from "../components/pages/chat/main/CameraUI";
 import TypingIndicator from "../components/pages/chat/main/TypingIndicator";
 import CallMessage from "../components/pages/chat/main/CallMessage";
+import ChatInput from "../components/pages/chat/ChatInput";
 import { useAuth } from "../context/AuthContext";
 
 export default function Chat() {
   const { close, setClose, selectedChatId, receiver, setReceiver } =
     useContext(ChatContext);
   const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [viewingSnap, setViewingSnap] = useState(null);
   const [chatMetadata, setChatMetadata] = useState(null);
@@ -40,7 +34,6 @@ export default function Chat() {
   const [isSocketReady, setIsSocketReady] = useState(false);
   const typingTimeoutRef = useRef(null);
 
-  const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
@@ -77,45 +70,41 @@ export default function Chat() {
     websocketService.viewSnap(selectedChatId, messageToBurn.id);
   };
 
-  const handleSendImage = async (imageBase64) => {
+  const handleSendMessage = (text) => {
+    websocketService.sendMessage(selectedChatId, text);
+  };
+
+  const sendSnapMessage = (url) => {
+    websocketService.sendMessage(selectedChatId, "Sent a Snap", "snap", url);
+  };
+
+  const handleSendImageFromCamera = async (imageBase64) => {
     try {
-      console.log("Đang upload ảnh...");
+      console.log("Đang upload ảnh từ Camera...");
       const imageId = uuidv4();
       const storageRef = ref(storage, `snaps/${imageId}.png`);
 
       await uploadString(storageRef, imageBase64, "data_url");
-
       const downloadURL = await getDownloadURL(storageRef);
 
-      websocketService.sendMessage(
-        selectedChatId,
-        "Sent a Snap",
-        "snap",
-        downloadURL
-      );
-      console.log("Đã gửi Snap thành công!");
+      sendSnapMessage(downloadURL);
+      console.log("Đã gửi Snap từ Camera thành công!");
     } catch (error) {
-      console.error("Lỗi gửi ảnh:", error);
+      console.error("Lỗi gửi ảnh camera:", error);
     }
   };
 
-  const handleEmojiClick = (emojiData) => {
-    setText((prev) => prev + emojiData.emoji);
+  const handleSendFile = (downloadURL) => {
+    if (!selectedChatId || !downloadURL) return;
+    websocketService.sendMessage(
+      selectedChatId,
+      downloadURL,
+      "file",
+      downloadURL
+    );
   };
 
-  const handleSend = async () => {
-    if (!text || !text.trim()) return;
-    const messageText = text;
-    inputRef.current.input.value = "";
-    setText("");
-    setShowEmojiPicker(false);
-
-    websocketService.sendMessage(selectedChatId, messageText);
-  };
-
-  const handleInputChange = (e) => {
-    setText(e.target.value);
-
+  const handleTyping = () => {
     if (websocketService.isConnected) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
@@ -127,15 +116,17 @@ export default function Chat() {
     }
   };
 
-  const getTypingUserDetails = (userId) => {
-    const userInfo = memberDetails[userId];
-    if (userInfo) {
-      return {
-        displayName: userInfo.displayName || "Unknown",
-        photoURL: userInfo.photoURL || "/default-avatar.png",
-      };
+  const handleInputFocus = async () => {
+    if (selectedChatId) {
+      if (window.__markChatAsSeenOptimistic) {
+        window.__markChatAsSeenOptimistic(selectedChatId);
+      }
+
+      if (!websocketService.isConnected) {
+        await websocketService.connect();
+      }
+      websocketService.markChatAsSeen(selectedChatId);
     }
-    return { photoURL: "/default-avatar.png", displayName: "Someone" };
   };
 
   useEffect(() => {
@@ -160,30 +151,18 @@ export default function Chat() {
     };
 
     loadChatData();
-
     const currentChatId = selectedChatId;
 
     const unsubscribeNewMessage = websocketService.onNewMessage((data) => {
-      console.log("📩 New message received:", data);
       if (data.chatId === currentChatId) {
-        console.log("✅ Adding message to state:", data.message);
         setMessages((prev) => {
           const exists = prev.some((msg) => msg.id === data.message.id);
-          if (exists) {
-            console.log("⚠️ Message already exists, skipping");
-            return prev;
-          }
-
+          if (exists) return prev;
           return [...prev, data.message];
         });
-
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, 100);
-      } else {
-        console.log(
-          `⚠️ Message for different chat (${data.chatId} vs ${currentChatId}), ignoring`
-        );
       }
     });
 
@@ -211,63 +190,27 @@ export default function Chat() {
 
     const unsubscribeError = websocketService.onError((error) => {
       console.error("WebSocket error:", error);
-      if (error.message === "Access denied" && currentChatId) {
-        console.warn(`⚠️ Access denied for chat ${currentChatId}, will retry`);
-      }
-    });
-
-    const unsubscribeJoinedChat = websocketService.onJoinedChat((data) => {
-      console.log("✅ Joined chat room:", data);
-      if (data.chatId === currentChatId) {
-        console.log(`✅ Successfully joined chat room: ${currentChatId}`);
-      }
     });
 
     const setupWebSocket = async () => {
       try {
         if (!websocketService.isConnected) {
-          console.log("🔄 Connecting WebSocket...");
           await websocketService.connect();
         }
-
-        if (!websocketService.isConnected) {
-          console.error("❌ WebSocket still not connected after connect()");
-          setTimeout(() => setupWebSocket(), 1000);
-          return;
-        }
-
-        console.log("✅ WebSocket ready, joining chat:", currentChatId);
         setIsSocketReady(true);
-
-        await new Promise((resolve) => setTimeout(resolve, 300));
-
-        if (!websocketService.isConnected) {
-          console.error("❌ Socket disconnected before join, retrying...");
-          setTimeout(() => setupWebSocket(), 1000);
-          return;
-        }
-
-        console.log("📤 Calling joinChat for:", currentChatId);
         websocketService.joinChat(currentChatId);
-
-        console.log("✅ joinChat called, waiting for server confirmation...");
       } catch (error) {
-        console.error("❌ Failed to setup WebSocket:", error);
-        setTimeout(() => {
-          setupWebSocket();
-        }, 2000);
+        console.error("Failed to setup WebSocket:", error);
       }
     };
 
     setupWebSocket();
 
     return () => {
-      console.log(`🧹 Cleaning up chat ${currentChatId}`);
       unsubscribeNewMessage();
       if (unsubscribeMessageDeleted) unsubscribeMessageDeleted();
       unsubscribeSnapViewed();
       unsubscribeError();
-      unsubscribeJoinedChat();
       if (currentChatId) {
         websocketService.leaveChat(currentChatId);
       }
@@ -292,127 +235,68 @@ export default function Chat() {
 
   useEffect(() => {
     if (!chatMetadata || !selectedChatId) return;
-
     const fetchMembers = async () => {
       const details = {};
-
       if (chatMetadata.type === "group") {
         if (!chatMetadata.members) return;
-
         const promises = chatMetadata.members.map(async (uid) => {
           try {
             const userDoc = await getDoc(doc(db, "users", uid));
-            if (userDoc.exists()) {
-              details[uid] = userDoc.data();
-            }
-          } catch (error) {
-            console.error("Error fetching member:", uid);
-          }
+            if (userDoc.exists()) details[uid] = userDoc.data();
+          } catch (error) {}
         });
-
         await Promise.all(promises);
       } else {
+        // Logic fetch 1-1 giữ nguyên
         try {
           const currentUserDoc = await getDoc(doc(db, "users", user.uid));
-          if (currentUserDoc.exists()) {
+          if (currentUserDoc.exists())
             details[user.uid] = currentUserDoc.data();
-          }
 
           const userChatsRef = doc(db, "userchats", user.uid);
           const userChatsDoc = await getDoc(userChatsRef);
-
           if (userChatsDoc.exists()) {
-            const userChats = userChatsDoc.data().chats || [];
-            const chatEntry = userChats.find(
-              (chat) => chat.chatId === selectedChatId
-            );
-
+            const chatEntry = userChatsDoc
+              .data()
+              .chats?.find((c) => c.chatId === selectedChatId);
             if (chatEntry?.receiverId) {
               const receiverDoc = await getDoc(
                 doc(db, "users", chatEntry.receiverId)
               );
-              if (receiverDoc.exists()) {
+              if (receiverDoc.exists())
                 details[chatEntry.receiverId] = receiverDoc.data();
-              }
             }
           }
-        } catch (error) {
-          console.error("Error fetching 1-1 chat members:", error);
+        } catch (e) {
+          console.error(e);
         }
       }
-
       setMemberDetails(details);
     };
-
     fetchMembers();
   }, [chatMetadata, selectedChatId, user.uid]);
 
+  // UseEffect fetch receiver info
   useEffect(() => {
-    if (!selectedChatId || !chatMetadata) return;
-
-    if (chatMetadata.type === "group") return;
-
-    if (!receiver?.uid || !receiver?.displayName || !receiver?.photoURL) {
-      const fetchReceiverInfo = async () => {
-        try {
-          const userChatsRef = doc(db, "userchats", user.uid);
-          const userChatsDoc = await getDoc(userChatsRef);
-
-          if (userChatsDoc.exists()) {
-            const userChats = userChatsDoc.data().chats || [];
-            const chatEntry = userChats.find(
-              (chat) => chat.chatId === selectedChatId
-            );
-
-            if (chatEntry?.receiverId) {
-              const receiverDoc = await getDoc(
-                doc(db, "users", chatEntry.receiverId)
-              );
-              if (receiverDoc.exists()) {
-                const receiverData = receiverDoc.data();
-                if (setReceiver) {
-                  setReceiver({
-                    uid: chatEntry.receiverId,
-                    displayName: receiverData.displayName || "Unknown",
-                    photoURL: receiverData.photoURL || "/default-avatar.png",
-                  });
-                }
-                setMemberDetails((prev) => ({
-                  ...prev,
-                  [chatEntry.receiverId]: receiverData,
-                }));
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching receiver info:", error);
-        }
-      };
-
-      fetchReceiverInfo();
+    if (!selectedChatId || !chatMetadata || chatMetadata.type === "group")
+      return;
+    if (!receiver?.uid) {
     }
   }, [selectedChatId, chatMetadata, receiver, user.uid]);
 
+  // UseEffect typing status
   useEffect(() => {
     if (!isSocketReady || !selectedChatId) return;
     const cleanupTyping = websocketService.onTypingStatus((data) => {
-      // Chỉ xử lý nếu đúng chat room hiện tại
       if (data.chatId !== selectedChatId) return;
-
       setTypingUsers((prev) => {
         const newSet = new Set(prev);
-        if (data.type === "start") {
-          newSet.add(data.userId);
-        } else {
-          newSet.delete(data.userId);
-        }
+        if (data.type === "start") newSet.add(data.userId);
+        else newSet.delete(data.userId);
         return newSet;
       });
     });
-
-    return () => {
-      cleanupTyping();
-    };
+    return () => cleanupTyping();
   }, [selectedChatId, isSocketReady]);
 
   return (
@@ -451,6 +335,7 @@ export default function Chat() {
                           m.viewedBy && m.viewedBy.includes(user.uid);
                         const isCallMessage =
                           m.type === "call" || m.type === "call_log";
+
                         return (
                           <div
                             key={m.id || i}
@@ -495,6 +380,23 @@ export default function Chat() {
                                     message={m}
                                     isOwner={isOwner}
                                   />
+                                ) : m.type === "file" ? (
+                                  <a
+                                    href={m.img || m.text}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    download
+                                    className="flex items-center gap-2 px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                                  >
+                                    <span className="text-sm font-semibold truncate max-w-[200px]">
+                                      {(m.img || m.text || "")
+                                        .split("/")
+                                        .pop() || "File"}
+                                    </span>
+                                    <span className="text-xs text-blue-600 underline">
+                                      Download
+                                    </span>
+                                  </a>
                                 ) : m.type === "snap" ? (
                                   <div className="flex flex-col gap-1">
                                     {isViewedByMe ? (
@@ -592,7 +494,11 @@ export default function Chat() {
                       })
                     )}
                     {Array.from(typingUsers).map((userId) => {
-                      const userInfo = getTypingUserDetails(userId);
+                      // Logic hiển thị Typing indicator (giữ nguyên)
+                      const userInfo = memberDetails[userId] || {
+                        photoURL: "/default-avatar.png",
+                        displayName: "Someone",
+                      };
                       return (
                         <TypingIndicator
                           key={userId}
@@ -606,60 +512,13 @@ export default function Chat() {
                 )}
               </div>
 
-              <div className="grid grid-cols-[0.9fr_12fr_0.9fr_0.9fr] sm:grid-cols-[1fr_16fr_1fr_1fr] md:grid-cols-[1fr_20fr_1fr_1fr] place-content-center gap-2 sm:gap-3 mt-4 relative shrink-0">
-                {showEmojiPicker && (
-                  <div className="absolute bottom-12 right-0 z-50 shadow-lg w-[280px] max-w-[90vw]">
-                    <EmojiPicker
-                      onEmojiClick={handleEmojiClick}
-                      theme="dark"
-                      width={280}
-                      height={320}
-                    />
-                  </div>
-                )}
-                <div
-                  className="w-9 h-9 border border-gray-700 rounded-full grid place-content-center bg-[#292929] cursor-pointer"
-                  onClick={() => setIsCameraOpen(true)}
-                >
-                  <CameraFilled style={{ color: "#7E7E7E", fontSize: 18 }} />
-                </div>
-
-                <div id="custom-input">
-                  <Input
-                    className="input"
-                    placeholder="Send a chat"
-                    ref={inputRef}
-                    value={text}
-                    onChange={handleInputChange}
-                    onPressEnter={handleSend}
-                    onFocus={async () => {
-                      if (selectedChatId) {
-                        if (window.__markChatAsSeenOptimistic) {
-                          window.__markChatAsSeenOptimistic(selectedChatId);
-                        }
-
-                        if (!websocketService.isConnected) {
-                          await websocketService.connect();
-                        }
-                        websocketService.markChatAsSeen(selectedChatId);
-                      }
-                    }}
-                  />
-                </div>
-
-                <div
-                  className="w-9 h-9 border border-gray-700 rounded-full grid place-content-center bg-[#292929] cursor-pointer"
-                  onClick={() => setShowEmojiPicker((prev) => !prev)}
-                >
-                  <SmileOutlined style={{ color: "#7E7E7E", fontSize: 18 }} />
-                </div>
-
-                <div className="w-9 h-9 border border-gray-700 rounded-full grid place-content-center bg-[#292929]">
-                  <FileImageOutlined
-                    style={{ color: "#7E7E7E", fontSize: 18 }}
-                  />
-                </div>
-              </div>
+              <ChatInput
+                onSendMessage={handleSendMessage}
+                onSendImageSuccess={handleSendFile}
+                onTyping={handleTyping}
+                onFocus={handleInputFocus}
+                openCamera={() => setIsCameraOpen(true)}
+              />
             </div>
           </div>
         </div>
@@ -670,7 +529,7 @@ export default function Chat() {
       <CameraModal
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
-        onSendImage={handleSendImage}
+        onSendImage={handleSendImageFromCamera}
       />
     </>
   );

@@ -50,6 +50,8 @@ const routes = [
     element: <VideoChat />,
   },
   { path: "/login", element: <Login /> },
+
+  {path: "/signup", element: <SignupPage /> },
   { path: "/signup", element: <SignupPage /> },
 ];
 

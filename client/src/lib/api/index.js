@@ -6,7 +6,7 @@
 // Export services
 export { chatService, ChatService } from "./services/chat.service";
 export { friendService, FriendService } from "./services/friend.service";
-
+export { authService, AuthService } from "./services/auth.service";
 // Export API client
 export { apiClient, ApiClient } from "./apiClient";
 
