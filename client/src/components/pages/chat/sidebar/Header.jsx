@@ -1,4 +1,5 @@
 import { useContext } from "react";
+import { Link } from "react-router-dom";
 
 import {
   UserOutlined,
@@ -17,7 +18,9 @@ export default function Header() {
     <>
       <div className="flex justify-around items-center max-h-[61px] h-1/6 border border-b-gray-700">
         <Avatar size="large" icon={<UserOutlined />} />
-        <Logo width={36} height={36} />
+        <Link to="/" className="cursor-pointer">
+          <Logo width={36} height={36} />
+        </Link>
         <div className="flex gap-2">
           <div
             className="rounded-full bg-[#424242] w-8 h-8 grid place-content-center cursor-pointer"

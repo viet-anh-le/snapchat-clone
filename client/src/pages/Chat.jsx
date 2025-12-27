@@ -22,6 +22,7 @@ import CameraModal from "../components/pages/chat/main/CameraModal";
 import SnapViewer from "../components/pages/chat/main/SnapViewer";
 import CameraUI from "../components/pages/chat/main/CameraUI";
 import TypingIndicator from "../components/pages/chat/main/TypingIndicator";
+import CallMessage from "../components/pages/chat/main/CallMessage";
 import { useAuth } from "../context/AuthContext";
 
 export default function Chat() {
@@ -448,6 +449,15 @@ export default function Chat() {
                         const senderInfo = memberDetails[m.senderId];
                         const isViewedByMe =
                           m.viewedBy && m.viewedBy.includes(user.uid);
+                        if (m.type === "call") {
+                          return (
+                            <CallMessage
+                              key={m.id || i}
+                              message={m}
+                              isOwner={isOwner}
+                            />
+                          );
+                        }
                         return (
                           <div
                             key={m.id || i}

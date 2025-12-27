@@ -52,37 +52,30 @@ export default function VideoChat() {
   const sendCancelIfNeeded = () => {
     if (cancelSentRef.current) return;
     if (targetUserId && roomId) {
-      websocketService.sendCallCancel(targetUserId, roomId);
+      websocketService.sendCallCancel(targetUserId, roomId, chatId);
       cancelSentRef.current = true;
     }
   };
 
-  const logCallEndedMessage = (durationSec) => {
-    if (!chatId || !otherJoinedRef.current || callEndLoggedRef.current) return;
-    const text = `Cuộc gọi đã kết thúc trong ${Math.max(
-      1,
-      Math.round(durationSec)
-    )}s`;
-    websocketService.sendMessage(chatId, text, "call");
-    callEndLoggedRef.current = true;
-  };
+  // const logCallEndedMessage = (durationSec) => {
+  //   if (!chatId || !otherJoinedRef.current || callEndLoggedRef.current) return;
+  //   const text = `Cuộc gọi đã kết thúc trong ${Math.max(
+  //     1,
+  //     Math.round(durationSec)
+  //   )}s`;
+  //   websocketService.sendMessage(chatId, text, "call");
+  //   callEndLoggedRef.current = true;
+  // };
 
-  const sendCallEnd = (reasonText, durationSec) => {
+  const sendCallEnd = (durationSec) => {
     if (callEndedSentRef.current) return;
     callEndedSentRef.current = true;
     const target = otherUserIdRef.current || targetUserId;
     if (target && roomId) {
       websocketService.sendCallEnd(target, roomId, chatId, {
-        reason: reasonText,
         durationSec,
       });
     }
-  };
-
-  const logCallMessage = (text) => {
-    if (!chatId || callLoggedRef.current || !text) return;
-    websocketService.sendMessage(chatId, text, "call");
-    callLoggedRef.current = true;
   };
 
   // Lắng nghe thay đổi media (audio/video) từ các user khác
@@ -218,8 +211,7 @@ export default function VideoChat() {
       1,
       Math.round((Date.now() - startTimeRef.current) / 1000)
     );
-    logCallEndedMessage(durationSec);
-    sendCallEnd("caller-left", durationSec);
+    sendCallEnd(durationSec);
     await endCall(null, true, 0);
   };
 
@@ -324,10 +316,6 @@ export default function VideoChat() {
 
         const unsubscribeCallEnded = websocketService.onCallEnded((data) => {
           if (data?.roomId && data.roomId !== roomId) return;
-          const duration =
-            data?.durationSec ||
-            Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
-          logCallEndedMessage(duration);
           endCall("Cuộc gọi đã kết thúc", false, 500);
         });
 

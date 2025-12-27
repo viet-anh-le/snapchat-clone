@@ -3,8 +3,6 @@ import { ChatContext } from "../../../../context/ChatContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { websocketService } from "../../../../lib/websocket";
 
-import { CameraOutlined } from "@ant-design/icons";
-
 // Format time for display
 const formatTime = (timestamp) => {
   if (!timestamp) return "";
@@ -115,9 +113,6 @@ export default function UserChat({ receiver, chat, isGroup }) {
             )}
           </div>
         </div>
-      </div>
-      <div className="grid place-content-center shrink-0">
-        <CameraOutlined style={{ color: "white", fontSize: 20 }} />
       </div>
     </div>
   );

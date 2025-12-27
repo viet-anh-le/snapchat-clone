@@ -133,8 +133,8 @@ io.on("connection", (socket) => {
   });
 
   // Handle call cancellation before it is answered
-  socket.on("cancel-call", (data) => {
-    const { targetUserId, roomId } = data || {};
+  socket.on("cancel-call", async (data) => {
+    const { targetUserId, roomId, chatId } = data || {};
     if (!targetUserId) {
       console.warn("⚠️ [SERVER] cancel-call missing targetUserId");
       return;
@@ -147,6 +147,36 @@ io.on("connection", (socket) => {
       callerId: userId,
       roomId,
     });
+
+    if (chatId) {
+      try {
+        const missedCallMessage = {
+          id: crypto.randomUUID(),
+          senderId: userId,
+          text: "Cuộc gọi nhỡ",
+          type: "call",
+          callId: roomId,
+          createdAt: new Date(),
+          viewedBy: [userId],
+        };
+
+        await db
+          .collection("chats")
+          .doc(chatId)
+          .update({
+            messages: FieldValue.arrayUnion(missedCallMessage),
+          });
+
+        io.to(`chat:${chatId}`).emit("new-message", {
+          chatId,
+          message: missedCallMessage,
+        });
+
+        console.log("[SERVER] Missed call log saved.");
+      } catch (error) {
+        console.error("Error saving missed call log:", error);
+      }
+    }
   });
 
   // Handle callee decline
@@ -167,7 +197,7 @@ io.on("connection", (socket) => {
   });
 
   // Handle call ended (while both in room)
-  socket.on("call-ended", (data = {}) => {
+  socket.on("call-ended", async (data = {}) => {
     const { targetUserId, roomId, chatId, reason, durationSec } = data;
     if (!targetUserId) {
       console.warn("⚠️ [SERVER] call-ended missing targetUserId");
@@ -180,9 +210,37 @@ io.on("connection", (socket) => {
       callerId: userId,
       roomId,
       chatId,
-      reason,
       durationSec,
     });
+
+    if (chatId) {
+      try {
+        const systemMessage = {
+          id: crypto.randomUUID(),
+          senderId: userId,
+          text: `Cuộc gọi kết thúc • ${durationSec}s`,
+          type: "call",
+          createdAt: new Date(),
+          viewedBy: [userId],
+        };
+
+        await db
+          .collection("chats")
+          .doc(chatId)
+          .update({
+            messages: FieldValue.arrayUnion(systemMessage),
+          });
+
+        io.to(`chat:${chatId}`).emit("new-message", {
+          chatId,
+          message: systemMessage,
+        });
+
+        console.log("[SERVER] System message created automatically.");
+      } catch (err) {
+        console.error("Error saving system message:", err);
+      }
+    }
   });
 
   // ========== CHAT EVENTS ==========
@@ -355,12 +413,6 @@ io.on("connection", (socket) => {
       }
 
       const roomName = `chat:${chatId}`;
-      if (!socket.rooms.has(roomName)) {
-        console.warn(
-          `⚠️ User ${userId} tried to send to ${chatId} without joining room.`
-        );
-        return;
-      }
 
       const message = {
         id: crypto.randomUUID(),

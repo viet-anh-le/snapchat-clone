@@ -300,12 +300,12 @@ class WebSocketService {
   }
 
   // Cancel outgoing call before it is answered
-  sendCallCancel(targetUserId, roomId) {
+  sendCallCancel(targetUserId, roomId, chatId) {
     if (!this.socket?.connected) {
       console.warn("⚠️ Socket not connected, cannot cancel call");
       return;
     }
-    const payload = { targetUserId, roomId };
+    const payload = { targetUserId, roomId, chatId };
     console.log("📞 [CLIENT] Cancelling call:", payload);
     this.socket.emit("cancel-call", payload);
   }
