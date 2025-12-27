@@ -30,6 +30,7 @@ export default function VideoChat() {
   const mode = searchParams.get("mode") || "video";
   const isAudioOnly = mode === "audio";
   const chatId = searchParams.get("chatId");
+  const typeParam = searchParams.get("type");
   const navigate = useNavigate();
   const streamRef = useRef(null);
   const cancelSentRef = useRef(false);
@@ -199,14 +200,20 @@ export default function VideoChat() {
     return () => clearToasts();
   }, [clearToasts]);
 
+  console.log(typeParam);
   const handleLeaveCall = async () => {
-    isCallCompletedRef.current = true;
-    const durationSec = Math.max(
-      1,
-      Math.round((Date.now() - startTimeRef.current) / 1000)
-    );
-    sendCallEnd(durationSec);
-    await endCall(null, true, 0);
+    if (typeParam === "group") {
+      await performCleanup();
+      navigate("/chat");
+    } else {
+      isCallCompletedRef.current = true;
+      const durationSec = Math.max(
+        1,
+        Math.round((Date.now() - startTimeRef.current) / 1000)
+      );
+      sendCallEnd(durationSec);
+      await endCall(null, true, 0);
+    }
   };
 
   // Khởi tạo video call khi component mount

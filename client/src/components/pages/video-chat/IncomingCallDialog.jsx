@@ -47,6 +47,7 @@ const IncomingCallDialog = () => {
               timestamp: data.timestamp,
               callType: data.callType || "video",
               chatId: data.chatId,
+              type: data.type,
             });
           }
         );
@@ -92,12 +93,14 @@ const IncomingCallDialog = () => {
     const roomId = callData.roomId;
     const mode = callData.callType || "video";
     const chatId = callData.chatId;
+    const type = callData.type === "group" ? "group" : "private";
     setCallData(null);
 
     const url = new URL(window.location.origin);
     url.pathname = "/video-chat";
     url.searchParams.set("id", roomId);
     url.searchParams.set("mode", mode);
+    url.searchParams.set("type", type);
     if (chatId) url.searchParams.set("chatId", chatId);
     navigate(url.pathname + url.search);
   };

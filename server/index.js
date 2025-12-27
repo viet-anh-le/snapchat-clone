@@ -27,7 +27,10 @@ const server = http.createServer(app);
 // CORS configuration
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: process.env.CLIENT_URL || [
+      "http://localhost:5173",
+      "https://snapchat-clone-1mfv.vercel.app",
+    ],
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -104,32 +107,52 @@ io.on("connection", (socket) => {
 
   // Handle incoming call notification
   socket.on("incoming-call", (data) => {
-    const { targetUserId, ...callData } = data;
-    console.log(
-      `📞 [SERVER] Received incoming-call event from ${userId} to ${targetUserId}`
-    );
-    console.log(`📞 [SERVER] Call data:`, callData);
+    const { targetUserId, roomId, members } = data;
 
-    // Check if target user is online
-    const targetRoom = io.sockets.adapter.rooms.get(`user:${targetUserId}`);
-    const targetSocketCount = targetRoom ? targetRoom.size : 0;
-    console.log(
-      `📊 [SERVER] Target user ${targetUserId} room has ${targetSocketCount} socket(s)`
-    );
+    console.log(`📞 [SERVER] Received incoming-call event`);
+    console.log(`📞 [SERVER] Call data:`, data);
 
-    // Send to target user's personal room
-    const payload = {
-      ...callData,
-      callerId: userId,
-    };
-    console.log(
-      `📤 [SERVER] Emitting incoming-call to room user:${targetUserId}:`,
-      payload
-    );
-    io.to(`user:${targetUserId}`).emit("incoming-call", payload);
-    console.log(
-      `✅ [SERVER] incoming-call event emitted to user:${targetUserId}`
-    );
+    let recipients = [];
+
+    if (members && Array.isArray(members) && members.length > 0) {
+      recipients = members;
+      console.log(
+        `👨‍👩‍👦 [SERVER] Group Call Detected. Ringing ${recipients.length} members:`,
+        recipients
+      );
+    } else if (targetUserId) {
+      recipients = [targetUserId];
+      console.log(
+        `👤 [SERVER] Private Call Detected. Ringing target: ${targetUserId}`
+      );
+    } else {
+      console.warn(
+        "⚠️ [SERVER] Invalid call data: No targetUserId and no members provided."
+      );
+      return;
+    }
+
+    recipients.forEach((recipientId) => {
+      if (recipientId === socket.userId) return;
+
+      const roomName = `user:${recipientId}`;
+
+      const room = io.sockets.adapter.rooms.get(roomName);
+      const isOnline = room && room.size > 0;
+
+      console.log(
+        `📤 [SERVER] Emitting to ${recipientId} (${
+          isOnline ? "Online" : "Offline"
+        })`
+      );
+
+      io.to(roomName).emit("incoming-call", {
+        ...data,
+        targetUserId: recipientId,
+      });
+    });
+
+    console.log(`✅ [SERVER] Call distribution completed.`);
   });
 
   // Handle call cancellation before it is answered
@@ -669,6 +692,7 @@ io.on("connection", (socket) => {
 
       // Get list of participants
       const participants = Array.from(activeRooms.get(roomId).values());
+      console.log(`participants = ${participants}`);
 
       socket.emit("room-participants", { participants });
     } catch (error) {
