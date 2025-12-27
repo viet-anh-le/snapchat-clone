@@ -41,6 +41,7 @@ export default function VideoChat() {
   const otherJoinedRef = useRef(false);
   const callEndLoggedRef = useRef(false);
   const callLoggedRef = useRef(false);
+  const isCallCompletedRef = useRef(false);
 
   const dispatch = useDispatch();
   const { user } = useAuth();
@@ -51,21 +52,13 @@ export default function VideoChat() {
 
   const sendCancelIfNeeded = () => {
     if (cancelSentRef.current) return;
+    if (isCallCompletedRef.current) return;
+    if (otherJoinedRef.current) return;
     if (targetUserId && roomId) {
       websocketService.sendCallCancel(targetUserId, roomId, chatId);
       cancelSentRef.current = true;
     }
   };
-
-  // const logCallEndedMessage = (durationSec) => {
-  //   if (!chatId || !otherJoinedRef.current || callEndLoggedRef.current) return;
-  //   const text = `Cuộc gọi đã kết thúc trong ${Math.max(
-  //     1,
-  //     Math.round(durationSec)
-  //   )}s`;
-  //   websocketService.sendMessage(chatId, text, "call");
-  //   callEndLoggedRef.current = true;
-  // };
 
   const sendCallEnd = (durationSec) => {
     if (callEndedSentRef.current) return;
@@ -207,6 +200,7 @@ export default function VideoChat() {
   }, [clearToasts]);
 
   const handleLeaveCall = async () => {
+    isCallCompletedRef.current = true;
     const durationSec = Math.max(
       1,
       Math.round((Date.now() - startTimeRef.current) / 1000)
@@ -310,12 +304,22 @@ export default function VideoChat() {
         const unsubscribeCallDeclined = websocketService.onCallDeclined(
           (data) => {
             if (data?.roomId && data.roomId !== roomId) return;
+            isCallCompletedRef.current = true;
             endCall("Cuộc gọi đã bị từ chối", false, 1200);
+          }
+        );
+
+        const unsubscribeCallCancelled = websocketService.onCallCancelled(
+          (data) => {
+            if (data?.roomId && data.roomId !== roomId) return;
+            isCallCompletedRef.current = true;
+            endCall("Cuộc gọi nhỡ", false, 500);
           }
         );
 
         const unsubscribeCallEnded = websocketService.onCallEnded((data) => {
           if (data?.roomId && data.roomId !== roomId) return;
+          isCallCompletedRef.current = true;
           endCall("Cuộc gọi đã kết thúc", false, 500);
         });
 
@@ -336,6 +340,7 @@ export default function VideoChat() {
           unsubscribeRoomParticipants();
           if (unsubscribeCallDeclined) unsubscribeCallDeclined();
           if (unsubscribeCallEnded) unsubscribeCallEnded();
+          if (unsubscribeCallCancelled) unsubscribeCallCancelled();
           sendCancelIfNeeded();
           if (streamRef.current) {
             streamRef.current.getTracks().forEach((track) => track.stop());

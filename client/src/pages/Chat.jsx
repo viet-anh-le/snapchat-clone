@@ -449,15 +449,8 @@ export default function Chat() {
                         const senderInfo = memberDetails[m.senderId];
                         const isViewedByMe =
                           m.viewedBy && m.viewedBy.includes(user.uid);
-                        if (m.type === "call") {
-                          return (
-                            <CallMessage
-                              key={m.id || i}
-                              message={m}
-                              isOwner={isOwner}
-                            />
-                          );
-                        }
+                        const isCallMessage =
+                          m.type === "call" || m.type === "call_log";
                         return (
                           <div
                             key={m.id || i}
@@ -486,13 +479,23 @@ export default function Chat() {
                               )}
 
                               <div
-                                className={`p-2 rounded-xl ${
-                                  isOwner
-                                    ? "bg-blue-600 text-white"
-                                    : "bg-gray-700 text-white"
+                                className={`${
+                                  isCallMessage
+                                    ? "bg-transparent p-0"
+                                    : `p-2 rounded-xl ${
+                                        isOwner
+                                          ? "bg-blue-600 text-white"
+                                          : "bg-gray-700 text-white"
+                                      }`
                                 }`}
                               >
-                                {m.type === "snap" ? (
+                                {m.type === "call" || m.type === "call_log" ? (
+                                  <CallMessage
+                                    key={m.id || i}
+                                    message={m}
+                                    isOwner={isOwner}
+                                  />
+                                ) : m.type === "snap" ? (
                                   <div className="flex flex-col gap-1">
                                     {isViewedByMe ? (
                                       <div
