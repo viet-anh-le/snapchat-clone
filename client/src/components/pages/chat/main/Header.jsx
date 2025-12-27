@@ -4,15 +4,19 @@ import {
   PhoneFilled,
   VideoCameraFilled,
 } from "@ant-design/icons";
+import { doc, getDoc } from "firebase/firestore";
 
 import { websocketService } from "../../../../lib/websocket";
 import { v4 as uuidv4 } from "uuid";
 
 import { useAuth } from "../../../../context/AuthContext";
+import { db } from "../../../../lib/firebase";
 
 export default function Header({ setClose, receiver }) {
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // console.log(`============ Header: ${JSON.stringify(receiver)}`);
 
   const callUser = async (
     currentUser,
@@ -21,8 +25,9 @@ export default function Header({ setClose, receiver }) {
     chatId = null
   ) => {
     const newRoomId = uuidv4();
+    const isGroup = receiver?.isGroup || false;
 
-    const callPayload = {
+    let finalPayload = {
       callerId: currentUser.uid,
       callerName: currentUser.displayName || "Anonymous",
       callerPhoto: currentUser.photoURL || "/default-avatar.png",
@@ -35,24 +40,57 @@ export default function Header({ setClose, receiver }) {
     try {
       if (!websocketService.isConnected) {
         await websocketService.connect();
-      } else {
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (isGroup) {
+        let membersToCall = [];
 
-      websocketService.sendIncomingCall(targetUserId, callPayload);
+        if (chatId) {
+          const chatRef = doc(db, "chats", chatId);
+          const chatDoc = await getDoc(chatRef);
+
+          if (!chatDoc.exists()) {
+            console.error(`Chat ${chatId} not found`);
+            return;
+          }
+          const chatData = chatDoc.data();
+          membersToCall = (chatData?.members || []).filter(
+            (id) => id !== currentUser.uid
+          );
+        }
+
+        finalPayload = {
+          ...finalPayload,
+          members: membersToCall,
+          type: "group",
+          targetUserId: null,
+        };
+
+        websocketService.sendIncomingCall(null, finalPayload);
+      } else {
+        websocketService.sendIncomingCall(targetUserId, finalPayload);
+      }
 
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       const url = new URL(window.location.origin);
       url.pathname = "/video-chat";
       url.searchParams.set("id", newRoomId);
-      url.searchParams.set("target", targetUserId);
       url.searchParams.set("mode", callType);
+
+      if (isGroup) {
+        url.searchParams.set("type", "group");
+      } else {
+        url.searchParams.set("target", targetUserId);
+      }
+
       if (chatId) url.searchParams.set("chatId", chatId);
+
       navigate(url.pathname + url.search);
     } catch (error) {
-      alert("Không thể kết nối tới người dùng này.");
+      console.error("Lỗi khi gọi điện:", error);
+      alert(`Không thể kết nối: ${error.message}`);
     }
   };
   return (
