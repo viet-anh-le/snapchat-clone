@@ -6,7 +6,21 @@ const CallMessage = ({ message, isOwner }) => {
     message.text.toLowerCase().includes("nhỡ") ||
     message.text.toLowerCase().includes("missed") ||
     message.text.toLowerCase().includes("từ chối");
-  const isVideo = true;
+  const isVideo = message.callType === "video";
+
+  const getFormattedTime = (timestamp) => {
+    if (!timestamp) return "";
+
+    if (timestamp.toDate && typeof timestamp.toDate === "function") {
+      return format(timestamp.toDate(), "HH:mm");
+    }
+
+    try {
+      return format(new Date(timestamp), "HH:mm");
+    } catch (e) {
+      return "";
+    }
+  };
 
   const durationMatch = message.text.match(/(\d+s|\d+m \d+s)/);
   const durationDisplay = durationMatch ? durationMatch[0] : "";
@@ -46,7 +60,7 @@ const CallMessage = ({ message, isOwner }) => {
 
         <div className="flex flex-col">
           <span className="font-semibold text-sm">
-            {isMissed ? "Cuộc gọi nhỡ" : "Video Chat"}
+            {isMissed ? "Cuộc gọi nhỡ" : isVideo ? "Video Chat" : "Audio Call"}
           </span>
           <span
             className={`text-xs ${
@@ -58,7 +72,7 @@ const CallMessage = ({ message, isOwner }) => {
             }`}
           >
             {isMissed
-              ? format(message.createdAt.toDate(), "HH:mm")
+              ? getFormattedTime(message.createdAt)
               : durationDisplay || "Kết thúc"}
           </span>
         </div>

@@ -317,7 +317,7 @@ export default function Chat() {
             <div className="p-2 sm:p-3 border-gray-700 rounded-2xl bg-[#1E1E1E] flex-1 flex flex-col min-h-0">
               <div
                 ref={messagesContainerRef}
-                className="flex-1 overflow-y-auto min-h-0"
+                className="flex-1 overflow-y-auto min-h-0 no-scrollbar"
               >
                 {!selectedChatId ? (
                   <div className="text-center text-gray-400 mt-8">

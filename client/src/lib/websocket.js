@@ -248,13 +248,17 @@ class WebSocketService {
 
   joinVideoRoom(roomId, profile = {}) {
     if (!this.socket?.connected) return;
-    // Send payload object (new format) while remaining compatible with legacy server handlers
     this.socket.emit("join-video-room", { roomId, profile });
   }
 
-  leaveVideoRoom(roomId) {
+  leaveVideoRoom(roomId, logData = {}) {
     if (!this.socket?.connected) return;
-    this.socket.emit("leave-video-room", roomId);
+    console.log("log data", logData);
+    const payload = {
+      roomId,
+      ...(logData || {}),
+    };
+    this.socket.emit("leave-video-room", payload);
   }
 
   sendWebRTCOffer(offer, targetUserId, roomId) {
@@ -300,12 +304,12 @@ class WebSocketService {
   }
 
   // Cancel outgoing call before it is answered
-  sendCallCancel(targetUserId, roomId, chatId) {
+  sendCallCancel(targetUserId, roomId, chatId, callType = "video") {
     if (!this.socket?.connected) {
       console.warn("⚠️ Socket not connected, cannot cancel call");
       return;
     }
-    const payload = { targetUserId, roomId, chatId };
+    const payload = { targetUserId, roomId, chatId, callType };
     console.log("📞 [CLIENT] Cancelling call:", payload);
     this.socket.emit("cancel-call", payload);
   }

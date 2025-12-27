@@ -5,6 +5,9 @@ const cors = require("cors");
 const admin = require("firebase-admin");
 const path = require("path");
 const crypto = require("crypto");
+const {
+  updateLastMessageBackground,
+} = require("./functions/src/helpers/updateLastMessage");
 require("dotenv").config();
 try {
   const serviceAccount =
@@ -12,9 +15,9 @@ try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
-  console.log("✅ Firebase Admin initialized");
+  console.log("Firebase Admin initialized");
 } catch (error) {
-  console.error("❌ Error initializing Firebase Admin:", error.message);
+  console.error("Error initializing Firebase Admin:", error.message);
   process.exit(1);
 }
 
@@ -65,7 +68,7 @@ const userSockets = new Map();
 // Socket.io connection handler
 io.on("connection", (socket) => {
   const userId = socket.userId;
-  console.log(`✅ User connected: ${userId} (socket: ${socket.id})`);
+  console.log(`User connected: ${userId} (socket: ${socket.id})`);
 
   // Track user socket
   if (!userSockets.has(userId)) {
@@ -75,14 +78,12 @@ io.on("connection", (socket) => {
 
   // Join user's personal room for notifications
   socket.join(`user:${userId}`);
-  console.log(`✅ [SERVER] User ${userId} joined personal room user:${userId}`);
+  console.log(`[SERVER] User ${userId} joined personal room user:${userId}`);
 
   // Verify room exists
   const userRoom = io.sockets.adapter.rooms.get(`user:${userId}`);
   console.log(
-    `📊 [SERVER] Room user:${userId} has ${
-      userRoom ? userRoom.size : 0
-    } socket(s)`
+    `[SERVER] Room user:${userId} has ${userRoom ? userRoom.size : 0} socket(s)`
   );
 
   // User bắt đầu gõ
@@ -109,25 +110,25 @@ io.on("connection", (socket) => {
   socket.on("incoming-call", (data) => {
     const { targetUserId, roomId, members } = data;
 
-    console.log(`📞 [SERVER] Received incoming-call event`);
-    console.log(`📞 [SERVER] Call data:`, data);
+    console.log(`[SERVER] Received incoming-call event`);
+    console.log(`[SERVER] Call data:`, data);
 
     let recipients = [];
 
     if (members && Array.isArray(members) && members.length > 0) {
       recipients = members;
       console.log(
-        `👨‍👩‍👦 [SERVER] Group Call Detected. Ringing ${recipients.length} members:`,
+        `[SERVER] Group Call Detected. Ringing ${recipients.length} members:`,
         recipients
       );
     } else if (targetUserId) {
       recipients = [targetUserId];
       console.log(
-        `👤 [SERVER] Private Call Detected. Ringing target: ${targetUserId}`
+        `[SERVER] Private Call Detected. Ringing target: ${targetUserId}`
       );
     } else {
       console.warn(
-        "⚠️ [SERVER] Invalid call data: No targetUserId and no members provided."
+        "[SERVER] Invalid call data: No targetUserId and no members provided."
       );
       return;
     }
@@ -141,7 +142,7 @@ io.on("connection", (socket) => {
       const isOnline = room && room.size > 0;
 
       console.log(
-        `📤 [SERVER] Emitting to ${recipientId} (${
+        `[SERVER] Emitting to ${recipientId} (${
           isOnline ? "Online" : "Offline"
         })`
       );
@@ -152,19 +153,19 @@ io.on("connection", (socket) => {
       });
     });
 
-    console.log(`✅ [SERVER] Call distribution completed.`);
+    console.log(`[SERVER] Call distribution completed.`);
   });
 
   // Handle call cancellation before it is answered
   socket.on("cancel-call", async (data) => {
-    const { targetUserId, roomId, chatId } = data || {};
+    const { targetUserId, roomId, chatId, callType = "video" } = data || {};
     if (!targetUserId) {
-      console.warn("⚠️ [SERVER] cancel-call missing targetUserId");
+      console.warn("[SERVER] cancel-call missing targetUserId");
       return;
     }
 
     console.log(
-      `📞 [SERVER] Cancel-call from ${userId} to ${targetUserId} for room ${roomId}`
+      `[SERVER] Cancel-call from ${userId} to ${targetUserId} for room ${roomId}`
     );
     io.to(`user:${targetUserId}`).emit("call-cancelled", {
       callerId: userId,
@@ -172,33 +173,39 @@ io.on("connection", (socket) => {
     });
 
     if (chatId) {
-      try {
-        const missedCallMessage = {
-          id: crypto.randomUUID(),
-          senderId: userId,
-          text: "Cuộc gọi nhỡ",
-          type: "call",
-          callId: roomId,
-          createdAt: new Date(),
-          viewedBy: [userId],
-        };
+      const messageText = "Cuộc gọi nhỡ";
+      (async () => {
+        try {
+          const missedCallMessage = {
+            id: crypto.randomUUID(),
+            senderId: userId,
+            text: messageText,
+            type: "call",
+            callType: callType,
+            callId: roomId,
+            createdAt: new Date(),
+            viewedBy: [userId],
+          };
 
-        await db
-          .collection("chats")
-          .doc(chatId)
-          .update({
-            messages: FieldValue.arrayUnion(missedCallMessage),
+          await db
+            .collection("chats")
+            .doc(chatId)
+            .update({
+              messages: FieldValue.arrayUnion(missedCallMessage),
+            });
+
+          io.to(`chat:${chatId}`).emit("new-message", {
+            chatId,
+            message: missedCallMessage,
           });
 
-        io.to(`chat:${chatId}`).emit("new-message", {
-          chatId,
-          message: missedCallMessage,
-        });
+          console.log("[SERVER] Missed call log saved.");
+        } catch (error) {
+          console.error("Error saving missed call log:", error);
+        }
+      })();
 
-        console.log("[SERVER] Missed call log saved.");
-      } catch (error) {
-        console.error("Error saving missed call log:", error);
-      }
+      updateLastMessageBackground(chatId, messageText, userId);
     }
   });
 
@@ -206,11 +213,11 @@ io.on("connection", (socket) => {
   socket.on("call-decline", (data) => {
     const { targetUserId, roomId, chatId } = data || {};
     if (!targetUserId) {
-      console.warn("⚠️ [SERVER] call-decline missing targetUserId");
+      console.warn("[SERVER] call-decline missing targetUserId");
       return;
     }
     console.log(
-      `📞 [SERVER] Call declined by ${userId}, notifying ${targetUserId} (room ${roomId})`
+      `[SERVER] Call declined by ${userId}, notifying ${targetUserId} (room ${roomId})`
     );
     io.to(`user:${targetUserId}`).emit("call-declined", {
       callerId: userId,
@@ -221,48 +228,60 @@ io.on("connection", (socket) => {
 
   // Handle call ended (while both in room)
   socket.on("call-ended", async (data = {}) => {
-    const { targetUserId, roomId, chatId, reason, durationSec } = data;
+    const {
+      targetUserId,
+      roomId,
+      chatId,
+      durationSec,
+      callType = "video",
+    } = data;
     if (!targetUserId) {
-      console.warn("⚠️ [SERVER] call-ended missing targetUserId");
+      console.warn("[SERVER] call-ended missing targetUserId");
       return;
     }
     console.log(
-      `📞 [SERVER] Call ended by ${userId}, notifying ${targetUserId} (room ${roomId})`
+      `[SERVER] Call ended by ${userId}, notifying ${targetUserId} (room ${roomId})`
     );
     io.to(`user:${targetUserId}`).emit("call-ended", {
       callerId: userId,
       roomId,
       chatId,
       durationSec,
+      callType,
     });
 
     if (chatId) {
-      try {
-        const systemMessage = {
-          id: crypto.randomUUID(),
-          senderId: userId,
-          text: `Cuộc gọi kết thúc • ${durationSec}s`,
-          type: "call",
-          createdAt: new Date(),
-          viewedBy: [userId],
-        };
+      const messageText = `Cuộc gọi kết thúc • ${durationSec}s`;
+      (async () => {
+        try {
+          const systemMessage = {
+            id: crypto.randomUUID(),
+            senderId: userId,
+            text: messageText,
+            type: "call",
+            callType: callType,
+            createdAt: new Date(),
+            viewedBy: [userId],
+          };
 
-        await db
-          .collection("chats")
-          .doc(chatId)
-          .update({
-            messages: FieldValue.arrayUnion(systemMessage),
+          await db
+            .collection("chats")
+            .doc(chatId)
+            .update({
+              messages: FieldValue.arrayUnion(systemMessage),
+            });
+
+          io.to(`chat:${chatId}`).emit("new-message", {
+            chatId,
+            message: systemMessage,
           });
 
-        io.to(`chat:${chatId}`).emit("new-message", {
-          chatId,
-          message: systemMessage,
-        });
-
-        console.log("[SERVER] System message created automatically.");
-      } catch (err) {
-        console.error("Error saving system message:", err);
-      }
+          console.log("[SERVER] System message created automatically.");
+        } catch (err) {
+          console.error("Error saving system message:", err);
+        }
+      })();
+      updateLastMessageBackground(chatId, messageText, userId);
     }
   });
 
@@ -271,20 +290,20 @@ io.on("connection", (socket) => {
   // Join chat room
   socket.on("join-chat", async (chatId) => {
     console.log(
-      `🔍 [JOIN-CHAT] Received join-chat event from ${userId} for chat ${chatId}`
+      `[JOIN-CHAT] Received join-chat event from ${userId} for chat ${chatId}`
     );
     try {
-      console.log(`🔍 User ${userId} attempting to join chat ${chatId}`);
+      console.log(`User ${userId} attempting to join chat ${chatId}`);
       // Verify user has access to this chat
       const chatDoc = await db.collection("chats").doc(chatId).get();
       if (!chatDoc.exists) {
-        console.error(`❌ Chat ${chatId} not found`);
+        console.error(`Chat ${chatId} not found`);
         socket.emit("error", { message: "Chat not found" });
         return;
       }
 
       const chatData = chatDoc.data();
-      console.log(`📋 Chat data:`, {
+      console.log(`Chat data:`, {
         type: chatData.type,
         members: chatData.members,
         userId: userId,
@@ -293,7 +312,7 @@ io.on("connection", (socket) => {
       if (chatData.type === "group") {
         if (!chatData.members || !chatData.members.includes(userId)) {
           console.error(
-            `❌ User ${userId} not in members array:`,
+            `User ${userId} not in members array:`,
             chatData.members
           );
           socket.emit("error", { message: "Access denied" });
@@ -311,13 +330,13 @@ io.on("connection", (socket) => {
 
         if (!hasAccess) {
           console.error(
-            `❌ User ${userId} doesn't have access to 1-1 chat ${chatId}`
+            `User ${userId} doesn't have access to 1-1 chat ${chatId}`
           );
           socket.emit("error", { message: "Access denied" });
           return;
         }
 
-        console.log(`✅ 1-1 chat access verified for user ${userId}`);
+        console.log(`1-1 chat access verified for user ${userId}`);
       }
 
       socket.join(`chat:${chatId}`);
@@ -325,7 +344,7 @@ io.on("connection", (socket) => {
       const room = io.sockets.adapter.rooms.get(`chat:${chatId}`);
       const socketCount = room ? room.size : 0;
       console.log(
-        `📱 User ${userId} joined chat ${chatId} (sockets in room: ${socketCount})`
+        `User ${userId} joined chat ${chatId} (sockets in room: ${socketCount})`
       );
 
       socket.emit("joined-chat", { chatId });
@@ -351,9 +370,7 @@ io.on("connection", (socket) => {
               };
 
               await userChatsRef.update({ chats: updatedChats });
-              console.log(
-                `✅ Marked chat ${chatId} as seen for user ${userId}`
-              );
+              console.log(`Marked chat ${chatId} as seen for user ${userId}`);
             }
           }
         }
@@ -374,16 +391,14 @@ io.on("connection", (socket) => {
   // Mark chat as seen
   socket.on("mark-chat-seen", async (data) => {
     const { chatId } = data;
-    console.log(
-      `👁️ [SERVER] Marking chat ${chatId} as seen for user ${userId}`
-    );
+    console.log(`[SERVER] Marking chat ${chatId} as seen for user ${userId}`);
 
     try {
       const userChatsRef = db.collection("userchats").doc(userId);
       const userChatsDoc = await userChatsRef.get();
 
       if (!userChatsDoc.exists) {
-        console.error(`❌ [SERVER] Userchats document not found for ${userId}`);
+        console.error(`[SERVER] Userchats document not found for ${userId}`);
         return;
       }
 
@@ -393,7 +408,7 @@ io.on("connection", (socket) => {
 
       if (chatIndex === -1) {
         console.error(
-          `❌ [SERVER] Chat ${chatId} not found in userchats for ${userId}`
+          `[SERVER] Chat ${chatId} not found in userchats for ${userId}`
         );
         return;
       }
@@ -401,7 +416,7 @@ io.on("connection", (socket) => {
       const updatedChats = [...chats];
       const currentChat = updatedChats[chatIndex];
 
-      console.log(`📋 [SERVER] Current chat state:`, {
+      console.log(`[SERVER] Current chat state:`, {
         chatId,
         lastSenderId: currentChat.lastSenderId,
         currentIsSeen: currentChat.isSeen,
@@ -416,21 +431,21 @@ io.on("connection", (socket) => {
 
       await userChatsRef.update({ chats: updatedChats });
       console.log(
-        `✅ [SERVER] Successfully marked chat ${chatId} as seen for user ${userId}`
+        `[SERVER] Successfully marked chat ${chatId} as seen for user ${userId}`
       );
     } catch (error) {
-      console.error("❌ [SERVER] Error marking chat as seen:", error);
+      console.error("[SERVER] Error marking chat as seen:", error);
     }
   });
 
   // Send message
   socket.on("send-message", (data) => {
-    console.log(`📨 Received send-message from ${userId}:`, data);
+    console.log(`Received send-message from ${userId}:`, data);
     try {
       const { chatId, text, type = "text", img } = data;
 
       if (!chatId || !text) {
-        console.error("❌ Missing chatId or text in send-message");
+        console.error("Missing chatId or text in send-message");
         socket.emit("error", { message: "Missing chatId or text" });
         return;
       }
@@ -469,7 +484,7 @@ io.on("connection", (socket) => {
             hasAccess = chatData.members && chatData.members.includes(userId);
             if (!hasAccess) {
               console.error(
-                `❌ User ${userId} not in group members:`,
+                `User ${userId} not in group members:`,
                 chatData.members
               );
             }
@@ -483,7 +498,7 @@ io.on("connection", (socket) => {
             }
             if (!hasAccess) {
               console.error(
-                `❌ User ${userId} doesn't have access to 1-1 chat ${chatId}`
+                `User ${userId} doesn't have access to 1-1 chat ${chatId}`
               );
             }
           }
@@ -666,7 +681,7 @@ io.on("connection", (socket) => {
         : {}) ||
       {};
     if (!roomId) {
-      console.warn("⚠️ [SERVER] join-video-room missing roomId");
+      console.warn("[SERVER] join-video-room missing roomId");
       return;
     }
     try {
@@ -692,7 +707,6 @@ io.on("connection", (socket) => {
 
       // Get list of participants
       const participants = Array.from(activeRooms.get(roomId).values());
-      console.log(`participants = ${participants}`);
 
       socket.emit("room-participants", { participants });
     } catch (error) {
@@ -702,13 +716,28 @@ io.on("connection", (socket) => {
   });
 
   // Leave video call room
-  socket.on("leave-video-room", (roomId) => {
+  socket.on("leave-video-room", (payload) => {
+    const isString = typeof payload === "string";
+    const roomId = isString ? payload : payload?.roomId;
+    const {
+      chatId,
+      durationSec,
+      callType = "video",
+    } = !isString ? payload : {};
+    if (!roomId) return;
+
     socket.leave(`video-room:${roomId}`);
 
+    console.log(chatId, durationSec);
+
     if (activeRooms.has(roomId)) {
-      const room = activeRooms.get(roomId);
-      room.delete(socket.id);
-      if (room.size === 0) {
+      const roomParticipants = activeRooms.get(roomId);
+
+      if (roomParticipants.has(socket.id)) {
+        roomParticipants.delete(socket.id);
+      }
+
+      if (roomParticipants.size === 0) {
         activeRooms.delete(roomId);
       }
     }
@@ -717,12 +746,54 @@ io.on("connection", (socket) => {
       userId,
       socketId: socket.id,
     });
+
+    if (chatId) {
+      const durationText = `${durationSec}s`;
+      const messageText =
+        callType === "audio"
+          ? `Đã rời cuộc gọi thoại • ${durationText}`
+          : `Đã rời cuộc gọi video • ${durationText}`;
+
+      (async () => {
+        try {
+          const systemMessage = {
+            id: crypto.randomUUID(),
+            senderId: userId,
+            text: messageText,
+            type: "call",
+            callType: callType,
+            isGroupLog: true,
+            duration: durationSec,
+            createdAt: new Date(),
+            viewedBy: [userId],
+          };
+
+          await db
+            .collection("chats")
+            .doc(chatId)
+            .update({
+              messages: FieldValue.arrayUnion(systemMessage),
+            });
+
+          io.to(`chat:${chatId}`).emit("new-message", {
+            chatId,
+            message: systemMessage,
+          });
+
+          console.log(`[SERVER] Group call log saved for user ${userId}`);
+        } catch (error) {
+          console.error("Error saving group call log:", error);
+        }
+      })();
+
+      updateLastMessageBackground(chatId, messageText, userId);
+    }
   });
 
   // WebRTC Offer
   socket.on("webrtc-offer", (data) => {
     const { offer, targetUserId, roomId } = data;
-    console.log(`📤 Offer from ${userId} to ${targetUserId} in room ${roomId}`);
+    console.log(`Offer from ${userId} to ${targetUserId} in room ${roomId}`);
 
     // Forward offer to target user
     const targetSockets = userSockets.get(targetUserId);
@@ -740,9 +811,7 @@ io.on("connection", (socket) => {
   // WebRTC Answer
   socket.on("webrtc-answer", (data) => {
     const { answer, targetUserId, roomId } = data;
-    console.log(
-      `📥 Answer from ${userId} to ${targetUserId} in room ${roomId}`
-    );
+    console.log(`Answer from ${userId} to ${targetUserId} in room ${roomId}`);
 
     // Forward answer to target user
     const targetSockets = userSockets.get(targetUserId);
@@ -785,7 +854,7 @@ io.on("connection", (socket) => {
 
   // Disconnect handler
   socket.on("disconnect", () => {
-    console.log(`❌ User disconnected: ${userId} (socket: ${socket.id})`);
+    console.log(`User disconnected: ${userId} (socket: ${socket.id})`);
     // Remove from user sockets
     if (userSockets.has(userId)) {
       userSockets.get(userId).delete(socket.id);

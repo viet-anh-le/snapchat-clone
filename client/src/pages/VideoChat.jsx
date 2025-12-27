@@ -43,6 +43,7 @@ export default function VideoChat() {
   const callEndLoggedRef = useRef(false);
   const callLoggedRef = useRef(false);
   const isCallCompletedRef = useRef(false);
+  const leaveCallTriggeredRef = useRef(false);
 
   const dispatch = useDispatch();
   const { user } = useAuth();
@@ -56,7 +57,16 @@ export default function VideoChat() {
     if (isCallCompletedRef.current) return;
     if (otherJoinedRef.current) return;
     if (targetUserId && roomId) {
-      websocketService.sendCallCancel(targetUserId, roomId, chatId);
+      const currentCallType = isAudioOnly ? "audio" : "video";
+      console.log(
+        `===============Current call type = ${currentCallType}==========================`
+      );
+      websocketService.sendCallCancel(
+        targetUserId,
+        roomId,
+        chatId,
+        currentCallType
+      );
       cancelSentRef.current = true;
     }
   };
@@ -65,9 +75,11 @@ export default function VideoChat() {
     if (callEndedSentRef.current) return;
     callEndedSentRef.current = true;
     const target = otherUserIdRef.current || targetUserId;
+    const currentCallType = isAudioOnly ? "audio" : "video";
     if (target && roomId) {
       websocketService.sendCallEnd(target, roomId, chatId, {
         durationSec,
+        callType: currentCallType,
       });
     }
   };
@@ -156,9 +168,9 @@ export default function VideoChat() {
       streamRef.current.getTracks().forEach((track) => track.stop());
     }
 
-    if (roomId) {
-      websocketService.leaveVideoRoom(roomId);
-    }
+    // if (roomId) {
+    //   websocketService.leaveVideoRoom(roomId);
+    // }
 
     // reset refs for next call
     otherUserIdRef.current = null;
@@ -202,15 +214,22 @@ export default function VideoChat() {
 
   console.log(typeParam);
   const handleLeaveCall = async () => {
+    leaveCallTriggeredRef.current = true;
+    const durationSec = Math.max(
+      1,
+      Math.round((Date.now() - startTimeRef.current) / 1000)
+    );
     if (typeParam === "group") {
+      const currentCallType = isAudioOnly ? "audio" : "video";
+      websocketService.leaveVideoRoom(roomId, {
+        chatId: chatId,
+        durationSec: durationSec,
+        callType: currentCallType,
+      });
       await performCleanup();
       navigate("/chat");
     } else {
       isCallCompletedRef.current = true;
-      const durationSec = Math.max(
-        1,
-        Math.round((Date.now() - startTimeRef.current) / 1000)
-      );
       sendCallEnd(durationSec);
       await endCall(null, true, 0);
     }
@@ -352,7 +371,9 @@ export default function VideoChat() {
           if (streamRef.current) {
             streamRef.current.getTracks().forEach((track) => track.stop());
           }
-          websocketService.leaveVideoRoom(roomId);
+          if (!leaveCallTriggeredRef.current) {
+            websocketService.leaveVideoRoom(roomId);
+          }
         };
       } catch (error) {
         console.error("Error initializing video call:", error);
