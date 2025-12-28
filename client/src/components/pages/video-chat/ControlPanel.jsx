@@ -94,20 +94,6 @@ const ControlPanel = ({
               <PhoneOff className="w-7 h-7 md:w-9 md:h-9" />
             </Button>
 
-            {/* Chat Toggle */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setIsChatOpen(!isChatOpen)}
-              className={`w-14 h-14 md:w-16 md:h-16 rounded-full border-4 transition-all duration-300 ${
-                isChatOpen
-                  ? "bg-blue-400 border-blue-500 hover:bg-blue-500 text-white"
-                  : "bg-yellow-400 border-yellow-500 hover:bg-yellow-500 text-black"
-              }`}
-            >
-              <MessageSquare className="w-6 h-6 md:w-7 md:h-7" />
-            </Button>
-
             {/* Participants Toggle */}
             <Button
               variant="outline"

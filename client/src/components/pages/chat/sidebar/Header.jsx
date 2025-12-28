@@ -1,5 +1,6 @@
 import { useContext } from "react";
 import { Link } from "react-router-dom";
+import { Icons } from "../../../layouts/constants";
 
 import {
   UserOutlined,
@@ -7,7 +8,6 @@ import {
   MessageOutlined,
 } from "@ant-design/icons";
 import { Avatar } from "antd";
-import { Logo } from "../../../layouts/Logo";
 
 import { ChatContext } from "../../../../context/ChatContext";
 
@@ -19,7 +19,7 @@ export default function Header() {
       <div className="flex justify-around items-center max-h-[61px] h-1/6 border border-b-gray-700">
         <Avatar size="large" icon={<UserOutlined />} />
         <Link to="/" className="cursor-pointer">
-          <Logo width={36} height={36} />
+          <Icons.Logo className="w-10 h-10 text-white" />
         </Link>
         <div className="flex gap-2">
           <div

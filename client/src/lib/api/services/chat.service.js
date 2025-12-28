@@ -25,6 +25,19 @@ class ChatService {
     });
   }
 
+  async reactToMessage(chatId, messageId, reaction) {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    return apiClient.post("/api/chat/react", {
+      chatId,
+      messageId,
+      reaction,
+    });
+  }
+
   /**
    * Get chat by ID
    * @param {string} chatId - Chat ID
@@ -48,4 +61,3 @@ export const chatService = new ChatService();
 
 // Export class for creating new instances if needed
 export { ChatService };
-

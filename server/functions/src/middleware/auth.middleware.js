@@ -5,9 +5,7 @@ module.exports.validateFirebaseIdToken = async (req, res, next) => {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(403).send("Unauthorized");
   }
-  console.log("Authorization Header:", authHeader);
   const idToken = authHeader.split("Bearer ")[1];
-  console.log("ID Token:", idToken);
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;

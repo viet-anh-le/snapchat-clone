@@ -24,7 +24,7 @@ module.exports.createGroup = async (req, res) => {
       groupName: groupName || "New Group",
       members: uniqueMemberIds,
       groupAdmin: currentUserId,
-      groupPhoto: "https://cdn-icons-png.flaticon.com/512/166/166258.png", // Thêm ảnh mặc định
+      groupPhoto: "https://cdn-icons-png.flaticon.com/512/166/166258.png",
     });
 
     // Tạo data tóm tắt cho userchats
@@ -33,9 +33,9 @@ module.exports.createGroup = async (req, res) => {
       displayName: groupName || "New Group",
       photoURL: "https://cdn-icons-png.flaticon.com/512/166/166258.png",
       lastMessage: "Nhóm đã được tạo",
-      updatedAt: Date.now(), // Dùng Date.now() để sort ở frontend dễ hơn
+      updatedAt: Date.now(),
       isSeen: false,
-      type: "group", // QUAN TRỌNG: Frontend dựa vào cái này để render
+      type: "group",
     };
 
     // Update cho từng thành viên
@@ -43,11 +43,10 @@ module.exports.createGroup = async (req, res) => {
       const userChatRef = db.collection("userchats").doc(memberId);
 
       // Dùng update để thêm vào mảng.
-      // Nếu user chưa có userchats doc thì cần set trước (thường user đã có rồi)
       batch.update(userChatRef, {
         chats: FieldValue.arrayUnion({
           ...groupChatSummary,
-          isSeen: memberId === currentUserId, // Người tạo thì coi như đã xem
+          isSeen: memberId === currentUserId,
         }),
       });
     });
@@ -61,6 +60,51 @@ module.exports.createGroup = async (req, res) => {
     });
   } catch (error) {
     console.error("Error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports.reactToMessage = async (req, res) => {
+  try {
+    const { chatId, messageId, reaction } = req.body;
+    const userId = req.user.uid;
+
+    const chatRef = db.collection("chats").doc(chatId);
+
+    await db.runTransaction(async (t) => {
+      const doc = await t.get(chatRef);
+      if (!doc.exists) throw new Error("Chat không tồn tại");
+
+      const data = doc.data();
+      const messages = data.messages || [];
+
+      const messageIndex = messages.findIndex((m) => m.id === messageId);
+
+      if (messageIndex === -1) {
+        throw new Error("Tin nhắn không tồn tại trong đoạn chat này");
+      }
+
+      const targetMessage = messages[messageIndex];
+      const currentReactions = targetMessage.reactions || {};
+
+      if (currentReactions[userId] === reaction) {
+        delete currentReactions[userId];
+      } else {
+        currentReactions[userId] = reaction;
+      }
+      console.log(targetMessage);
+
+      targetMessage.reactions = currentReactions;
+      messages[messageIndex] = targetMessage;
+
+      t.update(chatRef, { messages: messages });
+      return res.status(200).json({
+        success: true,
+        updatedReactions: currentReactions,
+      });
+    });
+  } catch (error) {
+    console.error("Lỗi thả reaction:", error);
     return res.status(500).json({ error: error.message });
   }
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,6 +10,7 @@ const IncomingCallDialog = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [callData, setCallData] = useState(null);
+  const audioRef = useRef(null);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -125,7 +126,33 @@ const IncomingCallDialog = () => {
 
   // Debug: log callData changes
   useEffect(() => {
+    if (!callData) return;
     console.log("🔍 [IncomingCallDialog] callData state:", callData);
+    const audio = new Audio("/lovely_audio.mp3");
+    audio.loop = true;
+    audio.volume = 0.5;
+    audioRef.current = audio;
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          console.log("Ringtone playing...");
+        })
+        .catch((error) => {
+          console.warn(
+            "Autoplay blocked by browser. User needs to interact first.",
+            error
+          );
+        });
+    }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current = null;
+        console.log("Ringtone stopped.");
+      }
+    };
   }, [callData]);
 
   return (

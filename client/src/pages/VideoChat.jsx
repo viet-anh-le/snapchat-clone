@@ -249,7 +249,12 @@ export default function VideoChat() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: !isAudioOnly,
-          audio: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+          },
         });
         // Lưu vào Ref để dùng cho cleanup sau này
         streamRef.current = stream;

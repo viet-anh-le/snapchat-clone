@@ -3,7 +3,8 @@ const { FieldValue } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) {
   try {
-    const serviceAccount = require("../../../firebase-admin.json");
+    const serviceAccount =
+      process.env.GOOGLE_APPLICATION_CREDENTIALS || "./firebase-admin.json";
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });

@@ -1,22 +1,33 @@
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Modal, List, Avatar, Tooltip } from "antd";
 import {
   LeftOutlined,
   PhoneFilled,
   VideoCameraFilled,
+  UserOutlined,
 } from "@ant-design/icons";
-import { doc, getDoc } from "firebase/firestore";
+import { count, doc, getDoc } from "firebase/firestore";
 
 import { websocketService } from "../../../../lib/websocket";
 import { v4 as uuidv4 } from "uuid";
 
 import { useAuth } from "../../../../context/AuthContext";
 import { db } from "../../../../lib/firebase";
+import { formatLastActive } from "../../../../lib/formatTime";
 
-export default function Header({ setClose, receiver }) {
+export default function Header({ setClose, isInterrupted, receiver }) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [isOnline, setIsOnline] = useState(receiver?.isOnline || false);
+  const [lastActive, setLastActive] = useState(receiver?.lastActive || null);
+  const [memberDetails, setMemberDetails] = useState({});
+  const [memberIds, setMemberIds] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // console.log(`============ Header: ${JSON.stringify(receiver)}`);
+  const showMembersModal = () => {
+    setIsModalOpen(receiver?.isGroup);
+  };
 
   const callUser = async (
     currentUser,
@@ -24,6 +35,10 @@ export default function Header({ setClose, receiver }) {
     callType = "video",
     chatId = null
   ) => {
+    if (isInterrupted) {
+      alert("Không thể thực hiện cuộc gọi.");
+      return;
+    }
     const newRoomId = uuidv4();
     const isGroup = receiver?.isGroup || false;
 
@@ -93,6 +108,52 @@ export default function Header({ setClose, receiver }) {
       alert(`Không thể kết nối: ${error.message}`);
     }
   };
+
+  useEffect(() => {
+    setIsOnline(receiver?.isOnline);
+    setLastActive(receiver?.lastActive);
+
+    const handleStatusUpdate = (data) => {
+      if (data.userId === receiver.uid) {
+        setIsOnline(data.isOnline);
+        if (data.lastActive) {
+          setLastActive(data.lastActive);
+        }
+      }
+    };
+
+    websocketService.socket.on("user-status", handleStatusUpdate);
+
+    return () => {
+      websocketService.socket.off("user-status", handleStatusUpdate);
+    };
+  }, [receiver.uid]);
+
+  useEffect(() => {
+    if (receiver?.isGroup && receiver?.chatId) {
+      const fetchMembersDetail = async () => {
+        try {
+          const chatRef = doc(db, "chats", receiver.chatId);
+          const chatDoc = await getDoc(chatRef);
+          if (!chatDoc.exists()) return;
+          const memberIdList = chatDoc.data()?.members || [];
+          setMemberIds(memberIdList);
+          const details = {};
+          const promises = memberIdList.map(async (uid) => {
+            const userSnap = await getDoc(doc(db, "users", uid));
+            if (userSnap.exists()) {
+              details[uid] = userSnap.data();
+            }
+          });
+          await Promise.all(promises);
+          setMemberDetails(details);
+        } catch (error) {
+          console.error("Error fetching members:", error);
+        }
+      };
+      fetchMembersDetail();
+    }
+  }, [receiver.uid, receiver?.isGroup]);
   return (
     <div className="w-full flex justify-between p-3 gap-3 max-h-[61px] h-1/6">
       <div className="flex gap-3">
@@ -102,15 +163,53 @@ export default function Header({ setClose, receiver }) {
         >
           <LeftOutlined style={{ color: "white" }} />
         </button>
-        <div className="flex gap-3 items-center">
-          <div className="w-9 h-9 rounded-full bg-amber-200 overflow-hidden">
-            <img
-              src={receiver?.photoURL || "/default-avatar.png"}
-              alt="avatar"
-              className="object-cover"
-            />
+        <div className="flex gap-3 items-center" onClick={showMembersModal}>
+          <div className="relative">
+            {receiver?.isGroup ? (
+              <Avatar.Group
+                max={{
+                  count: 3,
+                  style: { color: "#f56a00", backgroundColor: "#fde3cf" },
+                }}
+                size="large"
+              >
+                {memberIds.map((uid) => {
+                  const userDetail = memberDetails[uid];
+                  return (
+                    <Tooltip
+                      title={userDetail?.displayName || "Loading"}
+                      key={uid}
+                    >
+                      <Avatar
+                        src={userDetail?.photoURL || "/default-avatar.png"}
+                        icon={<UserOutlined />}
+                      />
+                    </Tooltip>
+                  );
+                })}
+              </Avatar.Group>
+            ) : (
+              <img
+                src={receiver.photoURL || "/default-avatar.png"}
+                className="w-10 h-10 rounded-full object-cover bg-amber-200"
+              />
+            )}
+            {isOnline && (
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#1E1E1E]"></div>
+            )}
           </div>
-          <p className="text-white font-semibold">{receiver?.displayName}</p>
+          <div className="flex flex-col">
+            <span className="font-bold text-white">{receiver.displayName}</span>
+            <span className="text-xs text-gray-400">
+              {isOnline ? (
+                <span className="text-green-400 font-medium">
+                  Đang hoạt động
+                </span>
+              ) : (
+                <span>{formatLastActive(lastActive)}</span>
+              )}
+            </span>
+          </div>
         </div>
       </div>
       <div className="bg-[#292929] flex gap-4 p-4 rounded-4xl text-white items-center">
@@ -132,6 +231,44 @@ export default function Header({ setClose, receiver }) {
           }}
         />
       </div>
+      <Modal
+        title={
+          <div className="text-center font-bold">
+            Thành viên nhóm ({memberIds.length})
+          </div>
+        }
+        open={isModalOpen}
+        onCancel={() => setIsModalOpen(false)}
+        footer={null}
+        centered
+        styles={{ maxHeight: "400px", overflowY: "auto" }}
+      >
+        <List
+          itemLayout="horizontal"
+          dataSource={memberIds}
+          renderItem={(uid) => {
+            const userDetail = memberDetails[uid];
+            return (
+              <List.Item>
+                <List.Item.Meta
+                  avatar={
+                    <Avatar
+                      src={userDetail?.photoURL || "/default-avatar.png"}
+                      size="large"
+                      icon={<UserOutlined />}
+                    />
+                  }
+                  title={
+                    <span className="font-semibold">
+                      {userDetail?.displayName || "Unknown User"}
+                    </span>
+                  }
+                />
+              </List.Item>
+            );
+          }}
+        />
+      </Modal>
     </div>
   );
 }

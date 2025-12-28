@@ -1,9 +1,8 @@
 import "../../styles/layout.css";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   SearchOutlined,
   PlayCircleOutlined,
-  FireOutlined,
   MessageOutlined,
   VideoCameraAddOutlined,
   UserOutlined,
@@ -15,8 +14,9 @@ import {
   MenuOutlined,
   CloseOutlined,
 } from "@ant-design/icons";
-import { Avatar, Dropdown, Button } from "antd";
-import { Logo } from "./Logo";
+import { Icons } from "./constants";
+import { Avatar, Dropdown } from "antd";
+import Button from "../pages/home/Button.js";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 
@@ -99,20 +99,18 @@ export default function Header() {
   };
 
   return (
-    <header className="pt-6 pb-2 grid grid-cols-3 md:grid-cols-3 sm:grid-cols-2 xs:grid-cols-2 sticky top-0 z-50 bg-white transition-colors">
+    <header className="py-2 grid grid-cols-2 md:grid-cols-3 sticky top-0 z-50 bg-white dark:bg-gray-900 transition-colors shadow-sm">
       {/* Logo + Search */}
       <div className="flex items-center gap-2">
-        <div>
-          <a
-            href="/"
-            className="inline-block px-4 py-4 mx-3 rounded-md hover:bg-[#fffc00]"
-          >
-            <Logo width={24} height={24} />
-          </a>
-        </div>
-        <div className="text-black text-2xl font-black tracking-tight">
-          SnapProject
-        </div>
+        <a
+          href="/"
+          className="inline-block px-4 py-2 mx-2 rounded-md hover:bg-[#fffc00] transition-colors group"
+        >
+          <Icons.Logo className="w-8 h-8 text-black group-hover:text-black dark:text-white dark:group-hover:text-black" />
+        </a>
+        <span className="hidden sm:inline text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-yellow-500 to-pink-600">
+          SnapChat
+        </span>
       </div>
 
       {/* Middle features - Desktop only */}
@@ -121,22 +119,18 @@ export default function Header() {
         className="flex gap-8 max-w-[384px] place-self-center cursor-pointer md:flex"
       >
         <Link to={"/stories"}>
-          <div className="flex flex-col items-center hover:opacity-70">
+          <div className="flex flex-col items-center hover:opacity-70 dark:text-gray-200">
             <PlayCircleOutlined style={{ fontSize: "28px" }} />
-            <p className="text-xs">Stories</p>
+            <p className="text-xs ">Stories</p>
           </div>
         </Link>
-        {/* <div className="flex flex-col items-center hover:opacity-70">
-          <FireOutlined style={{ fontSize: "28px" }} />
-          <p className="text-xs">Spotlight</p>
-        </div> */}
         <Link to={"/chat"}>
-          <div className="flex flex-col items-center hover:opacity-70">
+          <div className="flex flex-col items-center hover:opacity-70 dark:text-gray-200">
             <MessageOutlined style={{ fontSize: "28px" }} />
             <p className="text-xs">Chat</p>
           </div>
         </Link>
-        <div className="flex flex-col items-center hover:opacity-70">
+        <div className="flex flex-col items-center hover:opacity-70 dark:text-gray-200">
           <VideoCameraAddOutlined style={{ fontSize: "28px" }} />
           <p className="text-xs">Lenses</p>
         </div>
@@ -178,13 +172,9 @@ export default function Header() {
             </a>
           </Dropdown>
         ) : (
-          <Button
-            type="primary"
-            href="/login"
-            className="hidden sm:block bg-yellow-400 text-black font-semibold rounded-lg px-5 py-2 hover:bg-yellow-300"
-          >
-            Login
-          </Button>
+          <Link to="/login">
+            <Button type="primary">Login</Button>
+          </Link>
         )}
 
         {/* Mobile hamburger menu */}
@@ -219,22 +209,18 @@ export default function Header() {
 
             {/* Mobile navigation links */}
             <Link to={"/stories"} onClick={() => setMobileMenuOpen(false)}>
-              <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+              <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200 rounded">
                 <PlayCircleOutlined style={{ fontSize: "20px" }} />
                 <span>Stories</span>
               </div>
             </Link>
-            <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-              <FireOutlined style={{ fontSize: "20px" }} />
-              <span>Spotlight</span>
-            </div>
             <Link to={"/chat"} onClick={() => setMobileMenuOpen(false)}>
-              <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+              <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200 rounded">
                 <MessageOutlined style={{ fontSize: "20px" }} />
                 <span>Chat</span>
               </div>
             </Link>
-            <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+            <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200 rounded cursor-pointer">
               <VideoCameraAddOutlined style={{ fontSize: "20px" }} />
               <span>Lenses</span>
             </div>

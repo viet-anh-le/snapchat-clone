@@ -9,10 +9,12 @@ import {
   LoadingOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
+  UnlockOutlined,
 } from "@ant-design/icons";
 
 import { db } from "../../../../lib/firebase";
 import { apiService } from "../../../../lib/api";
+import { friendService } from "../../../../lib/api";
 
 import {
   collection,
@@ -32,6 +34,7 @@ import { useAuth } from "../../../../context/AuthContext";
 export default function AddUser() {
   const { toggleAddUser } = useContext(ChatContext);
   const { user } = useAuth();
+  const [messageApi, contextHolder] = message.useMessage();
 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
@@ -83,10 +86,10 @@ export default function AddUser() {
 
     try {
       await apiService.sendFriendRequest(userTarget.uid);
-      message.success("Friend request sent!");
+      messageApi.success("Friend request sent!");
     } catch (error) {
       console.error("Lỗi:", error.message);
-      message.error(error.message || "Failed to send request.");
+      messageApi.error(error.message || "Failed to send request.");
     } finally {
       setAddingStatus((prev) => ({ ...prev, [userTarget.uid]: "idle" }));
     }
@@ -97,9 +100,9 @@ export default function AddUser() {
       await updateDoc(doc(db, "users", user.uid), {
         sentRequests: arrayRemove(receiverUid),
       });
-      message.info("Request canceled");
+      messageApi.info("Request canceled");
     } catch (e) {
-      message.error("Error");
+      messageApi.error("Error");
     }
   };
 
@@ -108,9 +111,9 @@ export default function AddUser() {
     setProcessingId(requestUser.uid);
     try {
       await apiService.acceptFriendRequest(requestUser.uid);
-      message.success(`You and ${requestUser.displayName} are now friends!`);
+      messageApi.success(`You and ${requestUser.displayName} are now friends!`);
     } catch (error) {
-      message.error(error.message);
+      messageApi.error(error.message);
     } finally {
       setProcessingId(null);
     }
@@ -121,9 +124,9 @@ export default function AddUser() {
     setProcessingId(requestUser.uid);
     try {
       await apiService.rejectFriendRequest(requestUser.uid);
-      message.info("Request removed.");
+      messageApi.info("Request removed.");
     } catch (error) {
-      message.error(error.message);
+      messageApi.error(error.message);
     } finally {
       setProcessingId(null);
     }
@@ -132,27 +135,30 @@ export default function AddUser() {
   const handleBlock = async (targetUid) => {
     try {
       await apiService.blockUser(targetUid);
-      message.success("User blocked successfully");
+      messageApi.success("User blocked successfully");
     } catch (err) {
       console.error(err);
-      message.error(err.message || "Failed to block user");
+      messageApi.error(err.message || "Failed to block user");
+    }
+  };
+
+  const handleUnblock = async (targetUid) => {
+    try {
+      await friendService.unblockUser(targetUid);
+      messageApi.success("Đã bỏ chặn người dùng.");
+    } catch (err) {
+      console.error(err);
+      messageApi.error(err.message || "Failed to unblock user");
     }
   };
 
   useEffect(() => {
     if (!user?.uid) return;
-
-    // Lấy danh sách bạn bè
-    const unSubChat = onSnapshot(doc(db, "userchats", user.uid), (res) => {
-      const data = res.data();
-      if (data?.chats)
-        setFriendIds(new Set(data.chats.map((c) => c.receiverId)));
-    });
-
-    // Lấy Block, SentRequests, FriendRequests
+    // Lấy Friends, Block, SentRequests, FriendRequests
     const unSubUser = onSnapshot(doc(db, "users", user.uid), (res) => {
       const data = res.data();
       if (data) {
+        setFriendIds(new Set(data.friends || []));
         setBlockedIds(new Set(data.blocked || []));
         setFriendRequests(data.friendRequests || []);
 
@@ -161,7 +167,6 @@ export default function AddUser() {
     });
 
     return () => {
-      unSubChat();
       unSubUser();
     };
   }, [user.uid]);
@@ -233,9 +238,12 @@ export default function AddUser() {
 
                     <div className="w-24 flex justify-end">
                       {isBlocked ? (
-                        <div className="w-full py-1 rounded-3xl bg-red-900 text-white text-[10px] font-semibold flex items-center justify-center">
-                          Blocked
-                        </div>
+                        <button
+                          onClick={() => handleUnblock(u.uid)}
+                          className="w-full h-8 flex items-center justify-center bg-gray-700 text-gray-300 border border-gray-600 rounded-3xl text-xs font-medium hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all group"
+                        >
+                          <UnlockOutlined className="mr-1" /> Unblock
+                        </button>
                       ) : isFriend ? (
                         <div className="w-full py-1 rounded-3xl bg-green-600/20 text-green-500 border border-green-600/50 text-[10px] font-semibold flex items-center justify-center gap-1">
                           <CheckOutlined /> Friend
@@ -347,6 +355,7 @@ export default function AddUser() {
 
   return (
     <>
+      {contextHolder}
       {toggleAddUser && (
         <div className="w-[400px] bg-[#121212] custom-add-user p-3 rounded-3xl">
           <Tabs

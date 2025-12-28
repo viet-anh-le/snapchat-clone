@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState, useEffect } from "react";
 import { ChatContext } from "../../../../context/ChatContext";
 import { useAuth } from "../../../../context/AuthContext";
 import { websocketService } from "../../../../lib/websocket";
@@ -6,22 +6,16 @@ import { websocketService } from "../../../../lib/websocket";
 // Format time for display
 const formatTime = (timestamp) => {
   if (!timestamp) return "";
-
   const now = new Date();
   const time = new Date(timestamp);
   const diffMs = now - time;
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-
   if (diffMins < 1) return "Just now";
-
   if (diffMins < 60) return `${diffMins}m ago`;
-
   if (diffHours < 24) return `${diffHours}h ago`;
-
   if (diffDays < 7) return `${diffDays}d ago`;
-
   return time.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -32,6 +26,7 @@ export default function UserChat({ receiver, chat, isGroup }) {
   const { setClose, setSelectedChatId, setReceiver, isMobile, setSidebarOpen } =
     useContext(ChatContext);
   const { user } = useAuth();
+  const [isOnline, setIsOnline] = useState(receiver?.isOnline || false);
 
   const lastMessage = chat?.lastMessage || "No messages yet";
   const lastSenderId = chat?.lastSenderId;
@@ -47,6 +42,20 @@ export default function UserChat({ receiver, chat, isGroup }) {
   }
   const timestamp = chat?.updatedAt || chat?.updateAt;
   const formattedTime = formatTime(timestamp);
+
+  useEffect(() => {
+    if (isGroup || !receiver?.uid) return;
+    setIsOnline(receiver?.isOnline || false);
+    const handleStatusUpdate = (data) => {
+      if (data.userId === receiver.uid) {
+        setIsOnline(data.isOnline);
+      }
+    };
+    websocketService.socket.on("user-status", handleStatusUpdate);
+    return () => {
+      websocketService.socket.off("user-status", handleStatusUpdate);
+    };
+  }, [receiver, isGroup]);
 
   return (
     <div
@@ -74,12 +83,18 @@ export default function UserChat({ receiver, chat, isGroup }) {
       }}
     >
       <div className="flex gap-3 flex-1 min-w-0">
-        <div className="w-12 h-12 rounded-full flex items-center justify-center bg-amber-200 overflow-hidden shrink-0">
-          <img
-            src={receiver?.photoURL || "/default-avatar.png"}
-            alt="avatar"
-            className="w-full h-full object-cover"
-          />
+        <div className="relative shrink-0">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center bg-amber-200 overflow-hidden">
+            <img
+              src={receiver?.photoURL || "/default-avatar.png"}
+              alt="avatar"
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          {!isGroup && isOnline && (
+            <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-[#272727] rounded-full"></div>
+          )}
         </div>
         <div className="text-white flex-1 min-w-0">
           <div className="flex items-center gap-2">

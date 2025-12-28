@@ -102,7 +102,7 @@ export default function ChatLayout() {
           )}
 
           {showNewChat && (
-            <div className="absolute top-0 bottom-0 left-0 md:left-[280px] lg:left-[340px] z-50 h-full w-full sm:w-auto shadow-[4px_0_24px_rgba(0,0,0,0.5)]">
+            <div className="absolute top-0 bottom-0 left-0 z-50 h-full w-full sm:w-auto shadow-[4px_0_24px_rgba(0,0,0,0.5)]">
               <NewChatPanel />
             </div>
           )}

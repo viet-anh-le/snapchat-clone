@@ -2,7 +2,7 @@ import "./chat.css";
 
 import { useContext, useEffect, useState, useRef } from "react";
 import { ChatContext } from "../context/ChatContext";
-import { Avatar, Popover, Button, Image } from "antd";
+import { Avatar, Popover, Button, Image, message } from "antd";
 
 import { storage, db } from "../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -18,11 +18,24 @@ import CameraUI from "../components/pages/chat/main/CameraUI";
 import TypingIndicator from "../components/pages/chat/main/TypingIndicator";
 import CallMessage from "../components/pages/chat/main/CallMessage";
 import ChatInput from "../components/pages/chat/ChatInput";
+import MessageBubble from "../components/pages/chat/main/MessageBubble";
+import { friendService } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+
+const formatMessageTime = (timestamp) => {
+  if (!timestamp?.toDate) return "";
+  return timestamp.toDate().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
 
 export default function Chat() {
   const { close, setClose, selectedChatId, receiver, setReceiver } =
     useContext(ChatContext);
+  const { user } = useAuth();
+  const [messageApi, contextHolder] = message.useMessage();
   const [messages, setMessages] = useState([]);
 
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -37,7 +50,9 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
 
-  const { user } = useAuth();
+  const isBlockedByMe = user?.blocked?.includes(receiver?.uid);
+  const isBlockedByThem = receiver?.blocked?.includes(user?.uid);
+  const isInterrupted = isBlockedByMe || isBlockedByThem;
 
   const getChatInfo = () => {
     if (chatMetadata?.type === "group") {
@@ -71,7 +86,13 @@ export default function Chat() {
   };
 
   const handleSendMessage = (text) => {
-    websocketService.sendMessage(selectedChatId, text);
+    websocketService.sendMessage(
+      selectedChatId,
+      text,
+      "text",
+      null,
+      receiver?.uid
+    );
   };
 
   const sendSnapMessage = (url) => {
@@ -126,6 +147,16 @@ export default function Chat() {
         await websocketService.connect();
       }
       websocketService.markChatAsSeen(selectedChatId);
+    }
+  };
+
+  const handleUnblock = async () => {
+    try {
+      await friendService.unblockUser(receiver.uid);
+      messageApi.success("Đã bỏ chặn người dùng.");
+    } catch (error) {
+      console.error(error);
+      messageApi.error("Bỏ chặn thất bại: " + error.message);
     }
   };
 
@@ -192,6 +223,20 @@ export default function Chat() {
       console.error("WebSocket error:", error);
     });
 
+    const unsubscribeReaction = websocketService.onReactionUpdated((data) => {
+      console.log(data);
+      if (data.chatId === selectedChatId) {
+        setMessages((prevMessages) => {
+          return prevMessages.map((msg) => {
+            if (msg.id === data.messageId) {
+              return { ...msg, reactions: data.updatedReactions };
+            }
+            return msg;
+          });
+        });
+      }
+    });
+
     const setupWebSocket = async () => {
       try {
         if (!websocketService.isConnected) {
@@ -211,6 +256,7 @@ export default function Chat() {
       if (unsubscribeMessageDeleted) unsubscribeMessageDeleted();
       unsubscribeSnapViewed();
       unsubscribeError();
+      unsubscribeReaction();
       if (currentChatId) {
         websocketService.leaveChat(currentChatId);
       }
@@ -247,7 +293,6 @@ export default function Chat() {
         });
         await Promise.all(promises);
       } else {
-        // Logic fetch 1-1 giữ nguyên
         try {
           const currentUserDoc = await getDoc(doc(db, "users", user.uid));
           if (currentUserDoc.exists())
@@ -301,6 +346,7 @@ export default function Chat() {
 
   return (
     <>
+      {contextHolder}
       {close ? (
         <div className="h-screen flex items-center justify-center relative w-full">
           <CameraUI />
@@ -312,6 +358,7 @@ export default function Chat() {
           <div className="p-2 sm:p-3 bg-[#121212] flex-1 flex flex-col min-h-0">
             <Header
               setClose={setClose}
+              isInterrupted={isInterrupted}
               receiver={{ ...currentChatInfo, chatId: selectedChatId }}
             />
             <div className="p-2 sm:p-3 border-gray-700 rounded-2xl bg-[#1E1E1E] flex-1 flex flex-col min-h-0">
@@ -339,11 +386,11 @@ export default function Chat() {
                         return (
                           <div
                             key={m.id || i}
-                            className={`flex gap-2 max-w-full sm:max-w-[80%] ${
+                            className={`flex gap-2 max-w-full sm:max-w-[80%] items-center ${
                               isOwner
                                 ? "self-end flex-row-reverse"
                                 : "self-start"
-                            } relative`}
+                            } relative group`}
                           >
                             <Avatar
                               src={
@@ -439,15 +486,20 @@ export default function Chat() {
                                     )}
                                   </div>
                                 ) : (
-                                  <div className="text-sm">{m.text}</div>
+                                  <MessageBubble
+                                    chatId={selectedChatId}
+                                    message={m}
+                                    currentUserId={user?.uid}
+                                    isOwner={isOwner}
+                                  />
                                 )}
                               </div>
                               <div className="text-xs text-gray-300 mt-1">
-                                {m.createdAt?.toDate?.().toLocaleString?.() ||
-                                  ""}
+                                {formatMessageTime(m.createdAt) || ""}
                               </div>
                             </div>
 
+                            {/* NÚT XÓA */}
                             {isOwner && m.id && (
                               <Popover
                                 content={
@@ -471,13 +523,17 @@ export default function Chat() {
                                 onOpenChange={(open) =>
                                   setOpenDeleteId(open ? m.id : null)
                                 }
-                                placement={isOwner ? "left" : "right"}
+                                placement="top"
                               >
                                 <button
-                                  className="absolute -top-2 text-gray-400 hover:text-white text-xs"
-                                  style={
-                                    isOwner ? { left: -20 } : { right: -20 }
-                                  }
+                                  className={`
+                                    text-gray-400 hover:text-white text-xs p-2 
+                                    transition-opacity opacity-0 group-hover:opacity-100 
+                                    ${
+                                      openDeleteId === m.id ? "opacity-100" : ""
+                                    }
+                                    mr-6
+                                  `}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setOpenDeleteId(
@@ -494,7 +550,6 @@ export default function Chat() {
                       })
                     )}
                     {Array.from(typingUsers).map((userId) => {
-                      // Logic hiển thị Typing indicator (giữ nguyên)
                       const userInfo = memberDetails[userId] || {
                         photoURL: "/default-avatar.png",
                         displayName: "Someone",
@@ -512,13 +567,35 @@ export default function Chat() {
                 )}
               </div>
 
-              <ChatInput
-                onSendMessage={handleSendMessage}
-                onSendImageSuccess={handleSendFile}
-                onTyping={handleTyping}
-                onFocus={handleInputFocus}
-                openCamera={() => setIsCameraOpen(true)}
-              />
+              {isInterrupted ? (
+                <div className="p-4 bg-gray-900 border-t border-gray-800 text-center">
+                  {isBlockedByMe ? (
+                    <div className="flex flex-col gap-2 items-center">
+                      <span className="text-gray-400 text-sm">
+                        Bạn đã chặn người dùng này.
+                      </span>
+                      <button
+                        onClick={() => handleUnblock(receiver.uid)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-full text-sm font-medium hover:bg-blue-700"
+                      >
+                        Bỏ chặn
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500 text-sm italic">
+                      Bạn không thể trả lời cuộc trò chuyện này.
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <ChatInput
+                  onSendMessage={handleSendMessage}
+                  onSendImageSuccess={handleSendFile}
+                  onTyping={handleTyping}
+                  onFocus={handleInputFocus}
+                  openCamera={() => setIsCameraOpen(true)}
+                />
+              )}
             </div>
           </div>
         </div>

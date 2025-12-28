@@ -60,7 +60,7 @@ export const drawSceneHelper = (filter, canvas, video, latestLandmarksRef) => {
       if (filter === "kitty") {
         ctx.save();
         ctx.translate(geo.cx, geo.cy);
-        ctx.rotate(geo.angle);
+        ctx.rotate(geo.angle + Math.PI);
 
         // Ears
         ctx.fillStyle = "rgba(255, 180, 200, 0.9)";
@@ -114,7 +114,7 @@ export const drawSceneHelper = (filter, canvas, video, latestLandmarksRef) => {
       if (filter === "boss") {
         ctx.save();
         ctx.translate(geo.cx, geo.cy);
-        ctx.rotate(geo.angle);
+        ctx.rotate(geo.angle + Math.PI);
         const gWidth = geo.width * 2.2;
         const gHeight = geo.width * 0.5;
         ctx.fillStyle = "#111";
@@ -141,7 +141,7 @@ export const drawSceneHelper = (filter, canvas, video, latestLandmarksRef) => {
         [leftEye, rightEye].forEach((eye) => {
           ctx.save();
           ctx.translate(eye.x, eye.y);
-          ctx.rotate(geo.angle + (eye === leftEye ? -0.2 : 0.2));
+          ctx.rotate(geo.angle + (eye === leftEye ? -0.2 : 0.2) + Math.PI);
           ctx.beginPath();
           ctx.ellipse(
             0,

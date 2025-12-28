@@ -109,13 +109,19 @@ class WebSocketService {
     this.socket.emit("leave-chat", chatId);
   }
 
-  sendMessage(chatId, text, type = "text", img = null) {
+  sendMessage(chatId, text, type = "text", img = null, receiverId) {
     if (!this.socket?.connected) {
       console.warn("⚠️ Socket not connected, cannot send message");
       return;
     }
-    console.log("📤 Emitting send-message:", { chatId, text, type, img });
-    this.socket.emit("send-message", { chatId, text, type, img });
+    console.log("📤 Emitting send-message:", {
+      chatId,
+      text,
+      type,
+      img,
+      receiverId,
+    });
+    this.socket.emit("send-message", { chatId, text, type, img, receiverId });
   }
 
   viewSnap(chatId, messageId) {
@@ -241,6 +247,28 @@ class WebSocketService {
     return () => {
       this.socket?.off("user-typing", handleStart);
       this.socket?.off("user-stop-typing", handleStop);
+    };
+  }
+
+  // ========== React ===============
+  sendReactionUpdate(chatId, messageId, updatedReactions) {
+    if (this.socket) {
+      this.socket.emit("send-reaction-update", {
+        chatId,
+        messageId,
+        updatedReactions,
+      });
+    }
+  }
+
+  onReactionUpdated(callback) {
+    if (this.socket) {
+      this.socket.on("receive-reaction-update", callback);
+    }
+    return () => {
+      if (this.socket) {
+        this.socket.off("receive-reaction-update", callback);
+      }
     };
   }
 

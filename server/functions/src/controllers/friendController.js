@@ -260,3 +260,33 @@ exports.blockUser = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
+
+// --- API 5: Unblock User ---
+exports.unblockUser = async (req, res) => {
+  try {
+    const myUid = req.user.uid;
+    const targetUid = req.body.targetUid;
+
+    if (!targetUid) {
+      return res.status(400).json({ error: "targetUid is required" });
+    }
+
+    const myRef = db.collection("users").doc(myUid);
+
+    const myDoc = await myRef.get();
+    if (!myDoc.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    await myRef.update({
+      blocked: FieldValue.arrayRemove(targetUid),
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Unblocked successfully" });
+  } catch (error) {
+    console.error("Error unblocking user:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
