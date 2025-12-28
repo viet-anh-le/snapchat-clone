@@ -1,14 +1,5 @@
-import React from "react";
 import { motion } from "framer-motion";
-import {
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  PhoneOff,
-  MessageSquare,
-  Users,
-} from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -17,8 +8,6 @@ const ControlPanel = ({
   toggleMic,
   isCameraOff,
   toggleCamera,
-  isChatOpen,
-  setIsChatOpen,
   isSidebarOpen,
   setIsSidebarOpen,
   participantCount,

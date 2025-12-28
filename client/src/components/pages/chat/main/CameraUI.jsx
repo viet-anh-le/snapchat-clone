@@ -4,13 +4,10 @@ import { CloseOutlined, SendOutlined } from "@ant-design/icons";
 import {
   X,
   Zap,
-  Heart,
-  Camera as CameraIcon,
   Cat,
   Glasses,
   Ghost,
   Smile,
-  Loader2,
   Megaphone,
   Eye,
   User,

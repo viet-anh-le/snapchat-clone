@@ -58,9 +58,6 @@ export default function VideoChat() {
     if (otherJoinedRef.current) return;
     if (targetUserId && roomId) {
       const currentCallType = isAudioOnly ? "audio" : "video";
-      console.log(
-        `===============Current call type = ${currentCallType}==========================`
-      );
       websocketService.sendCallCancel(
         targetUserId,
         roomId,
@@ -212,7 +209,6 @@ export default function VideoChat() {
     return () => clearToasts();
   }, [clearToasts]);
 
-  console.log(typeParam);
   const handleLeaveCall = async () => {
     leaveCallTriggeredRef.current = true;
     const durationSec = Math.max(
@@ -238,7 +234,6 @@ export default function VideoChat() {
   // Khởi tạo video call khi component mount
   useEffect(() => {
     if (!roomId) {
-      console.error("Missing Room ID");
       navigate("/");
       return;
     }
@@ -399,15 +394,12 @@ export default function VideoChat() {
       </Helmet>
 
       <div className="min-h-screen bg-linear-to-br from-yellow-300 via-yellow-200 to-blue-200 relative overflow-hidden">
-        {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 left-0 w-96 h-96 bg-yellow-400 rounded-full filter blur-3xl"></div>
           <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-400 rounded-full filter blur-3xl"></div>
         </div>
 
-        {/* Main Content */}
         <div className="relative z-10 h-screen flex flex-col">
-          {/* Video Grid Area */}
           <div className="flex-1 p-4 md:p-6 overflow-hidden">
             <VideoGrid isCameraOff={isCameraOff} />
           </div>
@@ -418,8 +410,6 @@ export default function VideoChat() {
             toggleMic={toggleMic}
             isCameraOff={isCameraOff}
             toggleCamera={toggleCamera}
-            isChatOpen={isChatOpen}
-            setIsChatOpen={setIsChatOpen}
             isSidebarOpen={isSidebarOpen}
             setIsSidebarOpen={setIsSidebarOpen}
             participantCount={Object.keys(participants).length + 1}

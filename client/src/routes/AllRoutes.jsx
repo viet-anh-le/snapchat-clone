@@ -12,6 +12,8 @@ import VideoChat from "../pages/VideoChat";
 import IncomingCallDialog from "../components/pages/video-chat/IncomingCallDialog";
 import StoriesPage from "../components/pages/stories/StoriesPage";
 import EditProfile from "../components/pages/profile/EditProfile";
+import NotFound from "../pages/NotFound";
+import ProtectedRoute from "./ProtectedRoute";
 
 const routes = [
   {
@@ -22,22 +24,55 @@ const routes = [
         path: "/",
         element: <LandingPage />,
       },
-      { path: "/camera", element: <Home /> },
-      { path: "profile", element: <ProfilePage /> },
-      { path: "settings", element: <SettingsPage /> },
+      {
+        path: "/camera",
+        element: (
+          <ProtectedRoute>
+            <Home />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "profile",
+        element: (
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "settings",
+        element: (
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        ),
+      },
     ],
   },
   {
     path: "/stories",
-    element: <StoriesPage />,
+    element: (
+      <ProtectedRoute>
+        <StoriesPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: "/edit-profile",
-    element: <EditProfile />,
+    element: (
+      <ProtectedRoute>
+        <EditProfile />
+      </ProtectedRoute>
+    ),
   },
   {
     path: "/chat",
-    element: <ChatLayout />,
+    element: (
+      <ProtectedRoute>
+        <ChatLayout />
+      </ProtectedRoute>
+    ),
     children: [
       {
         path: "",
@@ -47,11 +82,16 @@ const routes = [
   },
   {
     path: "/video-chat",
-    element: <VideoChat />,
+    element: (
+      <ProtectedRoute>
+        <VideoChat />
+      </ProtectedRoute>
+    ),
   },
   { path: "/login", element: <Login /> },
-
   { path: "/signup", element: <SignupPage /> },
+  { path: "/404", element: <NotFound /> },
+  { path: "*", element: <NotFound /> },
 ];
 
 export default function AllRoutes() {

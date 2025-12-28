@@ -130,10 +130,6 @@ export default function Header() {
             <p className="text-xs">Chat</p>
           </div>
         </Link>
-        <div className="flex flex-col items-center hover:opacity-70 dark:text-gray-200">
-          <VideoCameraAddOutlined style={{ fontSize: "28px" }} />
-          <p className="text-xs">Lenses</p>
-        </div>
       </div>
 
       {/* User section + Mobile Menu */}
@@ -220,10 +216,6 @@ export default function Header() {
                 <span>Chat</span>
               </div>
             </Link>
-            <div className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200 rounded cursor-pointer">
-              <VideoCameraAddOutlined style={{ fontSize: "20px" }} />
-              <span>Lenses</span>
-            </div>
 
             {/* Mobile user section */}
             {user ? (

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import { useState, useRef } from "react";
 import EmojiPicker from "emoji-picker-react";
 import {
   CameraFilled,
@@ -42,7 +42,6 @@ export default function ChatInput({
     if (!file) return;
 
     try {
-      console.log("Đang upload file từ máy...");
       const imageId = uuidv4();
       const storageRef = ref(storage, `snaps/${imageId}`);
 
@@ -50,7 +49,6 @@ export default function ChatInput({
 
       const downloadURL = await getDownloadURL(storageRef);
 
-      console.log("Upload xong, gửi URL cho parent...");
       onSendImageSuccess(downloadURL);
     } catch (error) {
       console.error("Lỗi upload file:", error);

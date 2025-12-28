@@ -1,10 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getStorage } from "firebase/storage";
-// Realtime Database no longer used - using WebSocket instead
-// import { getDatabase } from "firebase/database";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 // Cấu hình Firebase
@@ -25,7 +23,7 @@ const isFirebaseConfigured =
   firebaseConfig.apiKey &&
   firebaseConfig.authDomain;
 
-let app, db, rtdb, auth, googleProvider, storage, functions;
+let app, db, auth, googleProvider, storage, functions;
 
 if (!isFirebaseConfigured) {
   console.warn(
@@ -34,24 +32,16 @@ if (!isFirebaseConfigured) {
   console.warn(
     "📝 Copy .env.example to .env and fill in your Firebase project details."
   );
-  // Create dummy exports for development
   auth = null;
   googleProvider = null;
   db = null;
   storage = null;
-  rtdb = null;
   functions = null;
 } else {
   try {
-    // Khởi tạo Firebase
     app = initializeApp(firebaseConfig);
 
-    // Khởi tạo Firestore
     db = getFirestore(app);
-
-    // Realtime Database no longer used - using WebSocket instead
-    // rtdb = getDatabase(app);
-    rtdb = null;
 
     // Khởi tạo Auth
     auth = getAuth(app);
@@ -71,16 +61,14 @@ if (!isFirebaseConfigured) {
         getAnalytics(app);
       }
     });
-
   } catch (error) {
     console.error("❌ Error initializing Firebase:", error);
     auth = null;
     googleProvider = null;
     db = null;
     storage = null;
-    rtdb = null;
     functions = null;
   }
 }
 
-export { auth, googleProvider, db, storage, rtdb, functions };
+export { auth, googleProvider, db, storage, functions };

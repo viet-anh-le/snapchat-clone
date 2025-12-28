@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, VideoOff } from "lucide-react";
+import { MicOff, VideoOff } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const VideoTile = ({ participant, isMe, isCameraOff }) => {
@@ -53,7 +53,6 @@ const VideoTile = ({ participant, isMe, isCameraOff }) => {
             }`}
           />
         )}
-        {/* Hidden audio element to ensure audio plays even when video is off */}
         <audio
           ref={audioRef}
           autoPlay

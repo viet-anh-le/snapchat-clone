@@ -7,7 +7,6 @@ const VideoGrid = ({ isCameraOff }) => {
     (state) => state.userState
   );
 
-  // Kết hợp current user và participants
   const allParticipants = [
     ...(currentUser
       ? Object.entries(currentUser).map(([id, data]) => ({

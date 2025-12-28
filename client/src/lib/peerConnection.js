@@ -96,7 +96,6 @@ export const initializeListeners = async (userId, roomId) => {
 
     if (pc) {
       try {
-        // Only handle if we're free or already have remote offer
         const isReady =
           pc.signalingState === "stable" ||
           pc.signalingState === "have-remote-offer";
@@ -108,7 +107,6 @@ export const initializeListeners = async (userId, roomId) => {
           return;
         }
 
-        // Avoid setting the same offer again
         if (
           pc.remoteDescription &&
           pc.remoteDescription.sdp === offer.sdp &&
@@ -121,12 +119,11 @@ export const initializeListeners = async (userId, roomId) => {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         await processCandidateQueue(fromUserId, pc);
 
-        // createAnswer only khi đã ở have-remote-offer
         if (pc.signalingState === "have-remote-offer") {
           await createAnswer(fromUserId, userId, roomId);
         } else {
           console.warn(
-            "⚠️ Không tạo answer vì state sau setRemoteDescription không phải have-remote-offer:",
+            "Không tạo answer vì state sau setRemoteDescription không phải have-remote-offer:",
             pc.signalingState
           );
         }
@@ -148,7 +145,7 @@ export const initializeListeners = async (userId, roomId) => {
       try {
         // Avoid double-setting answer
         if (pc.currentRemoteDescription) {
-          console.warn("⚠️ Bỏ qua answer vì đã có remoteDescription");
+          console.warn("Bỏ qua answer vì đã có remoteDescription");
           return;
         }
 
@@ -158,7 +155,7 @@ export const initializeListeners = async (userId, roomId) => {
           pc.signalingState !== "have-local-pranswer"
         ) {
           console.warn(
-            "⚠️ Bỏ qua answer vì state không phù hợp:",
+            "Bỏ qua answer vì state không phù hợp:",
             pc.signalingState
           );
           return;
@@ -218,7 +215,7 @@ const createAnswer = async (otherUserId, userId, roomId) => {
   const answerDescription = await pc.createAnswer();
   if (pc.signalingState === "stable") {
     console.warn(
-      "⚠️ Connection đã stable, bỏ qua việc setLocalDescription trùng lặp."
+      "Connection đã stable, bỏ qua việc setLocalDescription trùng lặp."
     );
     return;
   }
@@ -239,7 +236,7 @@ export const addConnection = (newUser, currentUser, stream, roomId) => {
     try {
       participantConnections[newUserId].close();
     } catch (e) {
-      console.warn("⚠️ Error closing existing PC", e);
+      console.warn("Error closing existing PC", e);
     }
     delete participantConnections[newUserId];
   }

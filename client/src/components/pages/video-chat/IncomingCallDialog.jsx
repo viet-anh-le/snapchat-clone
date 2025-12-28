@@ -14,30 +14,15 @@ const IncomingCallDialog = () => {
 
   useEffect(() => {
     if (!user?.uid) {
-      console.log("⚠️ [IncomingCallDialog] No user, skipping setup");
       return;
     }
-
-    console.log(`✅ [IncomingCallDialog] Setting up for user ${user.uid}`);
 
     const setupIncomingCall = async () => {
       try {
         if (!websocketService.isConnected) {
-          console.log(
-            `🔄 [IncomingCallDialog] Checking WebSocket connection...`
-          );
-          console.log(
-            `🔄 [IncomingCallDialog] WebSocket not connected, connecting...`
-          );
           await websocketService.connect();
         } else {
-          console.log(`✅ [IncomingCallDialog] WebSocket connected`);
         }
-        console.log(`✅ [IncomingCallDialog] WebSocket already connected`);
-
-        console.log(
-          `👂 [IncomingCallDialog] Setting up incoming-call listener`
-        );
         const unsubscribeIncomingCall = websocketService.onIncomingCall(
           (data) => {
             setCallData({
@@ -68,7 +53,6 @@ const IncomingCallDialog = () => {
           }
         );
 
-        console.log(`✅ [IncomingCallDialog] Listener setup complete`);
         return () => {
           if (unsubscribeIncomingCall) unsubscribeIncomingCall();
           if (unsubscribeCallCancelled) unsubscribeCallCancelled();
@@ -124,10 +108,8 @@ const IncomingCallDialog = () => {
     setCallData(null);
   };
 
-  // Debug: log callData changes
   useEffect(() => {
     if (!callData) return;
-    console.log("🔍 [IncomingCallDialog] callData state:", callData);
     const audio = new Audio("/lovely_audio.mp3");
     audio.loop = true;
     audio.volume = 0.5;

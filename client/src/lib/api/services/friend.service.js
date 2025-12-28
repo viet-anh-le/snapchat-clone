@@ -59,22 +59,6 @@ class FriendService {
       targetUid,
     });
   }
-
-  /**
-   * Get friend list
-   * @returns {Promise<Array>} Array of friends
-   */
-  async getFriends() {
-    return apiClient.get("/api/friends/list");
-  }
-
-  /**
-   * Get pending friend requests
-   * @returns {Promise<Object>} Object with sent and received requests
-   */
-  async getPendingRequests() {
-    return apiClient.get("/api/friends/pending");
-  }
 }
 
 // Export singleton instance
@@ -82,4 +66,3 @@ export const friendService = new FriendService();
 
 // Export class for creating new instances if needed
 export { FriendService };
-

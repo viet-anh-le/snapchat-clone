@@ -1,5 +1,3 @@
-import React from "react";
-
 const HeroImage = () => {
   return (
     <div className="relative w-8 h-8 shrink-0" data-name="ic-sparkles">

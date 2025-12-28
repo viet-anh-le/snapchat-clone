@@ -1,4 +1,5 @@
 import { Icons } from "./constants";
+import { Link } from "react-router-dom";
 
 const Footer = () => {
   return (
@@ -20,18 +21,16 @@ const Footer = () => {
                 Services
               </p>
               <ul className="text-sm md:text-md space-y-2 text-gray-700 dark:text-gray-300">
-                <li className="hover:opacity-70 cursor-pointer hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">
-                  Stories
-                </li>
-                <li className="hover:opacity-70 cursor-pointer hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">
-                  Spotlight
-                </li>
-                <li className="hover:opacity-70 cursor-pointer hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">
-                  Chat
-                </li>
-                <li className="hover:opacity-70 cursor-pointer hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">
-                  Lenses
-                </li>
+                <Link to={"/stories"}>
+                  <li className="hover:opacity-70 cursor-pointer hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">
+                    Stories
+                  </li>
+                </Link>
+                <Link to="/chat">
+                  <li className="hover:opacity-70 cursor-pointer hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">
+                    Chat
+                  </li>
+                </Link>
               </ul>
             </div>
           </div>
@@ -68,6 +67,18 @@ const Footer = () => {
                     className="text-gray-700 dark:text-gray-300 hover:underline hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors break-all"
                   >
                     anh.lv225250@sis.hust.edu.vn
+                  </a>
+                  <a
+                    href="mailto:an.nv224910@sis.hust.edu.vn"
+                    className="text-gray-700 dark:text-gray-300 hover:underline hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors break-all"
+                  >
+                    an.nv224910@sis.hust.edu.vn
+                  </a>
+                  <a
+                    href="mailto:an.nv225244@sis.hust.edu.vn"
+                    className="text-gray-700 dark:text-gray-300 hover:underline hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors break-all"
+                  >
+                    an.nv225244@sis.hust.edu.vn
                   </a>
                 </li>
               </ul>

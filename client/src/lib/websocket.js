@@ -10,13 +10,11 @@ class WebSocketService {
 
   connect() {
     if (this.socket?.connected) {
-      console.log("✅ Socket already connected, reusing connection");
       return Promise.resolve();
     }
 
     // If socket exists but not connected, disconnect it first
     if (this.socket) {
-      console.log("🔄 Disconnecting existing socket before reconnecting");
       this.socket.disconnect();
       this.socket = null;
     }
@@ -41,13 +39,11 @@ class WebSocketService {
         });
 
         this.socket.on("connect", () => {
-          console.log("✅ WebSocket connected, socket ID:", this.socket.id);
           this.isConnected = true;
           resolve();
         });
 
         this.socket.on("disconnect", () => {
-          console.log("❌ WebSocket disconnected");
           this.isConnected = false;
         });
 
@@ -83,25 +79,20 @@ class WebSocketService {
 
   joinChat(chatId) {
     if (!this.socket) {
-      console.warn("⚠️ Socket not initialized, cannot join chat");
+      console.warn("Socket not initialized, cannot join chat");
       return;
     }
     if (!this.socket.connected) {
       console.warn(
-        "⚠️ Socket not connected, cannot join chat. Will retry when connected."
+        "Socket not connected, cannot join chat. Will retry when connected."
       );
       // Retry when socket connects
       this.socket.once("connect", () => {
-        console.log(`📱 Socket connected, retrying join chat: ${chatId}`);
         this.socket.emit("join-chat", chatId);
       });
       return;
     }
-    console.log(
-      `📱 Emitting join-chat for room: ${chatId}, socket connected: ${this.socket.connected}, socket ID: ${this.socket.id}`
-    );
     this.socket.emit("join-chat", chatId);
-    console.log(`✅ join-chat event emitted for chat: ${chatId}`);
   }
 
   leaveChat(chatId) {
@@ -111,16 +102,9 @@ class WebSocketService {
 
   sendMessage(chatId, text, type = "text", img = null, receiverId) {
     if (!this.socket?.connected) {
-      console.warn("⚠️ Socket not connected, cannot send message");
+      console.warn("Socket not connected, cannot send message");
       return;
     }
-    console.log("📤 Emitting send-message:", {
-      chatId,
-      text,
-      type,
-      img,
-      receiverId,
-    });
     this.socket.emit("send-message", { chatId, text, type, img, receiverId });
   }
 
@@ -131,29 +115,25 @@ class WebSocketService {
 
   markChatAsSeen(chatId) {
     if (!this.socket?.connected) {
-      console.warn("⚠️ Socket not connected, cannot mark chat as seen");
+      console.warn("Socket not connected, cannot mark chat as seen");
       return;
     }
-    console.log(`👁️ Marking chat ${chatId} as seen`);
     this.socket.emit("mark-chat-seen", { chatId });
   }
 
   deleteMessage(chatId, messageId) {
     if (!this.socket?.connected) {
-      console.warn("⚠️ Socket not connected, cannot delete message");
+      console.warn("Socket not connected, cannot delete message");
       return;
     }
-    console.log("🗑️ Requesting delete-message", { chatId, messageId });
     this.socket.emit("delete-message", { chatId, messageId });
   }
 
   onNewMessage(callback) {
     // Set up listener immediately if socket exists and is connected
     if (this.socket && this.socket.connected) {
-      console.log("✅ Setting up new-message listener (socket ready)");
       this.socket.on("new-message", callback);
       return () => {
-        console.log("🗑️ Removing new-message listener");
         this.socket.off("new-message", callback);
       };
     }
@@ -161,7 +141,6 @@ class WebSocketService {
     // If socket not ready, set up when it connects
     const setupListener = () => {
       if (this.socket) {
-        console.log("✅ Setting up new-message listener (after connection)");
         this.socket.on("new-message", callback);
       }
     };
@@ -189,7 +168,6 @@ class WebSocketService {
 
     return () => {
       if (this.socket) {
-        console.log("🗑️ Removing new-message listener");
         this.socket.off("new-message", callback);
       }
     };
@@ -281,7 +259,6 @@ class WebSocketService {
 
   leaveVideoRoom(roomId, logData = {}) {
     if (!this.socket?.connected) return;
-    console.log("log data", logData);
     const payload = {
       roomId,
       ...(logData || {}),
@@ -316,40 +293,33 @@ class WebSocketService {
   // Send incoming call notification
   sendIncomingCall(targetUserId, callData) {
     if (!this.socket?.connected) {
-      console.warn("⚠️ Socket not connected, cannot send incoming call");
+      console.warn("Socket not connected, cannot send incoming call");
       return;
     }
     const payload = {
       targetUserId,
       ...callData,
     };
-    console.log(
-      `📞 [CLIENT] Sending incoming call to ${targetUserId}:`,
-      payload
-    );
     this.socket.emit("incoming-call", payload);
-    console.log(`✅ [CLIENT] incoming-call event emitted`);
   }
 
   // Cancel outgoing call before it is answered
   sendCallCancel(targetUserId, roomId, chatId, callType = "video") {
     if (!this.socket?.connected) {
-      console.warn("⚠️ Socket not connected, cannot cancel call");
+      console.warn("Socket not connected, cannot cancel call");
       return;
     }
     const payload = { targetUserId, roomId, chatId, callType };
-    console.log("📞 [CLIENT] Cancelling call:", payload);
     this.socket.emit("cancel-call", payload);
   }
 
   // Callee declines the call
   sendCallDecline(targetUserId, roomId, chatId) {
     if (!this.socket?.connected) {
-      console.warn("⚠️ Socket not connected, cannot decline call");
+      console.warn("Socket not connected, cannot decline call");
       return;
     }
     const payload = { targetUserId, roomId, chatId };
-    console.log("📞 [CLIENT] Declining call:", payload);
     this.socket.emit("call-decline", payload);
   }
 
@@ -357,20 +327,17 @@ class WebSocketService {
   onIncomingCall(callback) {
     if (!this.socket) {
       console.warn(
-        "⚠️ Socket not initialized, cannot setup incoming call listener"
+        "Socket not initialized, cannot setup incoming call listener"
       );
       return () => {};
     }
 
-    console.log("✅ [CLIENT] Setting up incoming-call listener");
     const handler = (data) => {
-      console.log("📞 [CLIENT] Received incoming-call event:", data);
       callback(data);
     };
     this.socket.on("incoming-call", handler);
 
     return () => {
-      console.log("🗑️ [CLIENT] Removing incoming-call listener");
       this.socket.off("incoming-call", handler);
     };
   }
@@ -379,20 +346,17 @@ class WebSocketService {
   onCallCancelled(callback) {
     if (!this.socket) {
       console.warn(
-        "⚠️ Socket not initialized, cannot setup call-cancelled listener"
+        "Socket not initialized, cannot setup call-cancelled listener"
       );
       return () => {};
     }
 
-    console.log("✅ [CLIENT] Setting up call-cancelled listener");
     const handler = (data) => {
-      console.log("📞 [CLIENT] Received call-cancelled event:", data);
       callback(data);
     };
     this.socket.on("call-cancelled", handler);
 
     return () => {
-      console.log("🗑️ [CLIENT] Removing call-cancelled listener");
       this.socket.off("call-cancelled", handler);
     };
   }
@@ -401,20 +365,17 @@ class WebSocketService {
   onCallDeclined(callback) {
     if (!this.socket) {
       console.warn(
-        "⚠️ Socket not initialized, cannot setup call-declined listener"
+        "Socket not initialized, cannot setup call-declined listener"
       );
       return () => {};
     }
 
-    console.log("✅ [CLIENT] Setting up call-declined listener");
     const handler = (data) => {
-      console.log("📞 [CLIENT] Received call-declined event:", data);
       callback(data);
     };
     this.socket.on("call-declined", handler);
 
     return () => {
-      console.log("🗑️ [CLIENT] Removing call-declined listener");
       this.socket.off("call-declined", handler);
     };
   }
@@ -422,31 +383,25 @@ class WebSocketService {
   // Caller/callee ends the call while in room
   sendCallEnd(targetUserId, roomId, chatId, payload = {}) {
     if (!this.socket?.connected) {
-      console.warn("⚠️ Socket not connected, cannot end call");
+      console.warn("Socket not connected, cannot end call");
       return;
     }
     const data = { targetUserId, roomId, chatId, ...payload };
-    console.log("📞 [CLIENT] Ending call:", data);
     this.socket.emit("call-ended", data);
   }
 
   onCallEnded(callback) {
     if (!this.socket) {
-      console.warn(
-        "⚠️ Socket not initialized, cannot setup call-ended listener"
-      );
+      console.warn("Socket not initialized, cannot setup call-ended listener");
       return () => {};
     }
 
-    console.log("✅ [CLIENT] Setting up call-ended listener");
     const handler = (data) => {
-      console.log("📞 [CLIENT] Received call-ended event:", data);
       callback(data);
     };
     this.socket.on("call-ended", handler);
 
     return () => {
-      console.log("🗑️ [CLIENT] Removing call-ended listener");
       this.socket.off("call-ended", handler);
     };
   }

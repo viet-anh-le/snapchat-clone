@@ -1,5 +1,4 @@
 import { DATA } from "../../layouts/constants";
-import Button from "./Button";
 
 const About = () => {
   return (
