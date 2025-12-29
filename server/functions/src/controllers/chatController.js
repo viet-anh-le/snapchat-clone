@@ -108,3 +108,153 @@ module.exports.reactToMessage = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
+
+module.exports.addMemberToGroup = async (req, res) => {
+  try {
+    const { chatId, newMemberId } = req.body;
+    const requesterId = req.user.uid;
+
+    const chatRef = db.collection("chats").doc(chatId);
+    const chatDoc = await chatRef.get();
+
+    if (!chatDoc.exists) {
+      return res.status(404).json({ error: "Nhóm không tồn tại" });
+    }
+
+    const chatData = chatDoc.data();
+
+    if (!chatData.members.includes(requesterId)) {
+      return res
+        .status(403)
+        .json({ error: "Bạn không có quyền thêm thành viên" });
+    }
+
+    if (chatData.members.includes(newMemberId)) {
+      return res.status(400).json({ error: "Người này đã ở trong nhóm" });
+    }
+
+    const userChatsRef = db.collection("userchats").doc(newMemberId);
+
+    await db.runTransaction(async (t) => {
+      const userChatsDoc = await t.get(userChatsRef);
+
+      t.update(chatRef, {
+        members: admin.firestore.FieldValue.arrayUnion(newMemberId),
+      });
+
+      const newChatEntry = {
+        chatId: chatId,
+        lastMessage: "Bạn đã được thêm vào nhóm",
+        lastSenderId: requesterId,
+        isSeen: false,
+        updatedAt: Date.now(),
+        receiverId: null,
+        isGroup: true,
+        groupName: chatData.groupName || "Group Chat",
+        groupPhoto: chatData.groupPhoto || "",
+      };
+
+      if (userChatsDoc.exists) {
+        t.update(userChatsRef, {
+          chats: admin.firestore.FieldValue.arrayUnion(newChatEntry),
+        });
+      } else {
+        t.set(userChatsRef, {
+          chats: [newChatEntry],
+        });
+      }
+
+      const systemMsgId = admin.firestore().collection("_").doc().id;
+      const systemMessage = {
+        id: systemMsgId,
+        text: "đã thêm một thành viên mới vào nhóm.",
+        senderId: requesterId,
+        createdAt: new Date(),
+        type: "system",
+        isSystem: true,
+        viewedBy: [requesterId],
+      };
+
+      t.update(chatRef, {
+        messages: admin.firestore.FieldValue.arrayUnion(systemMessage),
+      });
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Đã thêm thành viên thành công" });
+  } catch (error) {
+    console.error("Error adding member:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports.removeMember = async (req, res) => {
+  try {
+    const { chatId, memberId } = req.body;
+    const requesterId = req.user.uid;
+
+    const chatRef = db.collection("chats").doc(chatId);
+
+    await db.runTransaction(async (t) => {
+      const chatDoc = await t.get(chatRef);
+      if (!chatDoc.exists) throw new Error("Nhóm không tồn tại");
+
+      const chatData = chatDoc.data();
+
+      if (!chatData.members.includes(requesterId)) {
+        throw new Error(
+          "Bạn không phải thành viên nhóm này, không thể thao tác."
+        );
+      }
+
+      if (!chatData.members.includes(memberId)) {
+        throw new Error("Người này không còn trong nhóm.");
+      }
+      const userChatsRef = db.collection("userchats").doc(memberId);
+      const userChatsDoc = await t.get(userChatsRef);
+
+      t.update(chatRef, {
+        members: admin.firestore.FieldValue.arrayRemove(memberId),
+      });
+
+      if (userChatsDoc.exists) {
+        const userChatsData = userChatsDoc.data();
+        const currentChats = userChatsData.chats || [];
+        const updatedChats = currentChats.filter((c) => c.chatId !== chatId);
+
+        t.update(userChatsRef, { chats: updatedChats });
+      }
+
+      const isSelf = requesterId === memberId;
+      let systemText = "";
+
+      if (isSelf) {
+        systemText = "đã rời khỏi nhóm.";
+      } else {
+        systemText = "đã mời một thành viên ra khỏi nhóm.";
+      }
+
+      const systemMessage = {
+        id: admin.firestore().collection("_").doc().id,
+        text: systemText,
+        senderId: requesterId,
+        createdAt: new Date(),
+        type: "system",
+        isSystem: true,
+        viewedBy: chatData.members.filter((uid) => uid !== memberId),
+      };
+
+      t.update(chatRef, {
+        messages: admin.firestore.FieldValue.arrayUnion(systemMessage),
+      });
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Đã xóa thành viên" });
+  } catch (error) {
+    console.error("Error removing member:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};

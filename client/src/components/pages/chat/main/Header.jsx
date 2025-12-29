@@ -6,8 +6,11 @@ import {
   PhoneFilled,
   VideoCameraFilled,
   UserOutlined,
+  UserAddOutlined,
+  DeleteOutlined,
+  ExclamationCircleFilled,
 } from "@ant-design/icons";
-import { count, doc, getDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 import { websocketService } from "../../../../lib/websocket";
 import { v4 as uuidv4 } from "uuid";
@@ -15,6 +18,8 @@ import { v4 as uuidv4 } from "uuid";
 import { useAuth } from "../../../../context/AuthContext";
 import { db } from "../../../../lib/firebase";
 import { formatLastActive } from "../../../../lib/formatTime";
+import AddMemberModal from "./AddMemberModal";
+import RemoveMemberModal from "./RemoveMemberModal";
 
 export default function Header({ setClose, isInterrupted, receiver }) {
   const navigate = useNavigate();
@@ -24,6 +29,9 @@ export default function Header({ setClose, isInterrupted, receiver }) {
   const [memberDetails, setMemberDetails] = useState({});
   const [memberIds, setMemberIds] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [targetToRemove, setTargetToRemove] = useState(null);
 
   const showMembersModal = () => {
     setIsModalOpen(receiver?.isGroup);
@@ -109,6 +117,20 @@ export default function Header({ setClose, isInterrupted, receiver }) {
     }
   };
 
+  const handleMemberAddedSuccess = () => {
+    setRefreshKey((prev) => prev + 1);
+    setIsAddMemberOpen(false);
+  };
+
+  const handleRemoveSuccess = (isSelf) => {
+    if (isSelf) {
+      setClose(true);
+    } else {
+      setRefreshKey((prev) => prev + 1);
+    }
+    setTargetToRemove(null);
+  };
+
   useEffect(() => {
     setIsOnline(receiver?.isOnline);
     setLastActive(receiver?.lastActive);
@@ -153,7 +175,7 @@ export default function Header({ setClose, isInterrupted, receiver }) {
       };
       fetchMembersDetail();
     }
-  }, [receiver.uid, receiver?.isGroup]);
+  }, [receiver.uid, receiver?.isGroup, refreshKey]);
   return (
     <div className="w-full flex justify-between p-3 gap-3 max-h-[61px] h-1/6">
       <div className="flex gap-3">
@@ -213,6 +235,13 @@ export default function Header({ setClose, isInterrupted, receiver }) {
         </div>
       </div>
       <div className="bg-[#292929] flex gap-4 p-4 rounded-4xl text-white items-center">
+        {receiver?.isGroup && (
+          <UserAddOutlined
+            className="text-xl cursor-pointer hover:text-blue-400 mr-2"
+            title="Thêm thành viên"
+            onClick={() => setIsAddMemberOpen(true)}
+          />
+        )}
         <p className="text-lg font-medium mr-3">Call</p>
         <PhoneFilled
           style={{ fontSize: 18, cursor: "pointer" }}
@@ -248,8 +277,27 @@ export default function Header({ setClose, isInterrupted, receiver }) {
           dataSource={memberIds}
           renderItem={(uid) => {
             const userDetail = memberDetails[uid];
+            const isTargetMe = uid === user.uid;
             return (
-              <List.Item>
+              <List.Item
+                actions={[
+                  !isTargetMe && (
+                    <button
+                      key="delete"
+                      className="text-red-500 hover:bg-red-100 p-2 rounded-full transition"
+                      onClick={() =>
+                        setTargetToRemove({
+                          uid,
+                          displayName: userDetail?.displayName,
+                        })
+                      }
+                      title="Mời ra khỏi nhóm"
+                    >
+                      <DeleteOutlined />
+                    </button>
+                  ),
+                ]}
+              >
                 <List.Item.Meta
                   avatar={
                     <Avatar
@@ -261,6 +309,11 @@ export default function Header({ setClose, isInterrupted, receiver }) {
                   title={
                     <span className="font-semibold">
                       {userDetail?.displayName || "Unknown User"}
+                      {isTargetMe && (
+                        <span className="text-gray-400 text-xs ml-1">
+                          (Bạn)
+                        </span>
+                      )}
                     </span>
                   }
                 />
@@ -268,7 +321,35 @@ export default function Header({ setClose, isInterrupted, receiver }) {
             );
           }}
         />
+        <div className="mt-4 text-center border-t pt-2">
+          <button
+            className="text-red-600 font-semibold hover:underline"
+            onClick={() =>
+              setTargetToRemove({ uid: user.uid, displayName: "Bạn" })
+            }
+          >
+            Rời khỏi nhóm
+          </button>
+        </div>
       </Modal>
+      {receiver?.isGroup && (
+        <AddMemberModal
+          isOpen={isAddMemberOpen}
+          onClose={() => setIsAddMemberOpen(false)}
+          chatId={receiver.chatId}
+          currentMembers={memberIds || []}
+          onSuccess={handleMemberAddedSuccess}
+        />
+      )}
+      {receiver?.isGroup && (
+        <RemoveMemberModal
+          isOpen={!!targetToRemove}
+          onClose={() => setTargetToRemove(null)}
+          chatId={receiver.chatId}
+          targetUser={targetToRemove}
+          onSuccess={handleRemoveSuccess}
+        />
+      )}
     </div>
   );
 }

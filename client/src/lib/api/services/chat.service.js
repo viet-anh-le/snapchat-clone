@@ -39,6 +39,30 @@ class ChatService {
   }
 
   /**
+   * Add a member to an existing group
+   * @param {string} chatId
+   * @param {string} newMemberId
+   */
+  async addMemberToGroup(chatId, newMemberId) {
+    return apiClient.post("/api/chat/add-member", {
+      chatId,
+      newMemberId,
+    });
+  }
+
+  /**
+   * Remove a member from group (Kick) or Leave group
+   * @param {string} chatId
+   * @param {string} memberId
+   */
+  async removeMember(chatId, memberId) {
+    return apiClient.post("/api/chat/remove-member", {
+      chatId,
+      memberId,
+    });
+  }
+
+  /**
    * Get chat by ID
    * @param {string} chatId - Chat ID
    * @returns {Promise<Object>} Chat data
