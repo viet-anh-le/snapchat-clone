@@ -85,6 +85,14 @@ const Footer = () => {
                     an.nv225244@sis.hust.edu.vn
                   </a>
                 </li>
+                <li>
+                  <a
+                    href="mailto:an.nv225244@sis.hust.edu.vn"
+                    className="text-gray-700 dark:text-gray-300 hover:underline hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors break-all"
+                  >
+                    an.tnv224913@sis.hust.edu.vn
+                  </a>
+                </li>
               </ul>
             </div>
           </div>

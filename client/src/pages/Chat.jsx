@@ -376,12 +376,31 @@ export default function Chat() {
                       <div className="text-gray-400">No messages yet</div>
                     ) : (
                       messages.map((m, i) => {
+                        if (m.type === "system") {
+                          const isMe = m.senderId === user.uid;
+                          const senderName = isMe
+                            ? "Bạn"
+                            : memberDetails[m.senderId]?.displayName || "Ai đó";
+
+                          return (
+                            <div
+                              key={m.id || i}
+                              className="flex justify-center my-3 w-full"
+                            >
+                              <div className="bg-gray-800/60 border border-gray-700/50 backdrop-blur-sm px-4 py-1.5 rounded-full text-xs text-gray-400 shadow-sm text-center max-w-[85%]">
+                                <span className="font-bold text-gray-300">
+                                  {senderName}
+                                </span>{" "}
+                                <span>{m.text}</span>
+                              </div>
+                            </div>
+                          );
+                        }
                         const isOwner = m.senderId === user.uid;
                         const senderInfo = memberDetails[m.senderId];
                         const isViewedByMe =
                           m.viewedBy && m.viewedBy.includes(user.uid);
-                        const isCallMessage =
-                          m.type === "call" || m.type === "call_log";
+                        const isCallMessage = m.type === "call";
 
                         return (
                           <div

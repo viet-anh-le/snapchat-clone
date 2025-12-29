@@ -1,4 +1,5 @@
 const { db, admin, FieldValue } = require("../config/firebase");
+const { updateLastMessageBackground } = require("../helpers/updateLastMessage");
 
 module.exports.createGroup = async (req, res) => {
   const { currentUserId, selectedUsers, groupName } = req.body;
@@ -113,7 +114,7 @@ module.exports.addMemberToGroup = async (req, res) => {
   try {
     const { chatId, newMemberId } = req.body;
     const requesterId = req.user.uid;
-
+    const io = req.app.get("socketio");
     const chatRef = db.collection("chats").doc(chatId);
     const chatDoc = await chatRef.get();
 
@@ -149,9 +150,10 @@ module.exports.addMemberToGroup = async (req, res) => {
         isSeen: false,
         updatedAt: Date.now(),
         receiverId: null,
+        type: "group",
         isGroup: true,
-        groupName: chatData.groupName || "Group Chat",
-        groupPhoto: chatData.groupPhoto || "",
+        displayName: chatData.groupName || "Group Chat",
+        photoURL: chatData.groupPhoto || "",
       };
 
       if (userChatsDoc.exists) {
@@ -164,6 +166,7 @@ module.exports.addMemberToGroup = async (req, res) => {
         });
       }
 
+      const systemText = "đã thêm một thành viên mới vào nhóm.";
       const systemMsgId = admin.firestore().collection("_").doc().id;
       const systemMessage = {
         id: systemMsgId,
@@ -178,6 +181,18 @@ module.exports.addMemberToGroup = async (req, res) => {
       t.update(chatRef, {
         messages: admin.firestore.FieldValue.arrayUnion(systemMessage),
       });
+
+      const roomName = `chat:${chatId}`;
+      if (io) {
+        io.to(roomName).emit("new-message", {
+          chatId: chatId,
+          message: systemMessage,
+        });
+      }
+
+      updateLastMessageBackground(chatId, systemText, requesterId).catch(
+        (err) => console.error("Lỗi update lastMessage addMember:", err)
+      );
     });
 
     return res
@@ -193,8 +208,9 @@ module.exports.removeMember = async (req, res) => {
   try {
     const { chatId, memberId } = req.body;
     const requesterId = req.user.uid;
-
+    const io = req.app.get("socketio");
     const chatRef = db.collection("chats").doc(chatId);
+    let remainingMembers = [];
 
     await db.runTransaction(async (t) => {
       const chatDoc = await t.get(chatRef);
@@ -234,6 +250,7 @@ module.exports.removeMember = async (req, res) => {
       } else {
         systemText = "đã mời một thành viên ra khỏi nhóm.";
       }
+      remainingMembers = chatData.members.filter((uid) => uid !== memberId);
 
       const systemMessage = {
         id: admin.firestore().collection("_").doc().id,
@@ -248,6 +265,18 @@ module.exports.removeMember = async (req, res) => {
       t.update(chatRef, {
         messages: admin.firestore.FieldValue.arrayUnion(systemMessage),
       });
+
+      if (io && systemMessage) {
+        io.to(`chat:${chatId}`).emit("new-message", {
+          chatId: chatId,
+          message: systemMessage,
+        });
+      }
+      if (remainingMembers.length > 0) {
+        updateLastMessageBackground(chatId, systemText, requesterId).catch(
+          (err) => console.error("Lỗi update lastMessage removeMember:", err)
+        );
+      }
     });
 
     return res

@@ -11,7 +11,7 @@ import {
   Mail,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
-import { db, storage } from "../../../lib/firebase";
+import { db, storage, auth } from "../../../lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -128,10 +128,16 @@ export default function EditProfile() {
       }
 
       // C. Update Firebase Auth Profile (Display Name & Avatar)
-      await updateProfile(user, {
-        displayName: formData.displayName,
-        photoURL: newPhotoURL,
-      });
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, {
+          displayName: formData.displayName,
+          photoURL: newPhotoURL,
+        });
+      }
+      // await updateProfile(user, {
+      //   displayName: formData.displayName,
+      //   photoURL: newPhotoURL,
+      // });
 
       // D. Update Firestore Document (All fields)
       const userDocRef = doc(db, "users", user.uid);

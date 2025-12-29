@@ -25,6 +25,7 @@ app.use(express.json());
 
 // Socket.io connection handler
 socketInit(io);
+app.set("socketio", io);
 
 // ========== REST API ROUTES ==========
 

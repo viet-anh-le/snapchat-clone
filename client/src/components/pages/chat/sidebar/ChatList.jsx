@@ -32,8 +32,10 @@ export default function ChatList() {
       ...chatItem,
       lastMessage: optimistic.lastMessage ?? chatItem.lastMessage,
       lastSenderId: optimistic.lastSenderId ?? chatItem.lastSenderId,
-      isSeen: optimistic.isSeen !== undefined ? optimistic.isSeen : chatItem.isSeen,
-      updatedAt: optimistic.updatedAt ?? chatItem.updatedAt ?? chatItem.updateAt,
+      isSeen:
+        optimistic.isSeen !== undefined ? optimistic.isSeen : chatItem.isSeen,
+      updatedAt:
+        optimistic.updatedAt ?? chatItem.updatedAt ?? chatItem.updateAt,
     };
   };
 
@@ -47,9 +49,6 @@ export default function ChatList() {
         }
 
         const items = res.data().chats || [];
-        console.log(
-          `📋 [ChatList] Received ${items.length} chats from Firestore`
-        );
 
         // Process chats in parallel, using cache when possible
         const promises = items.map(async (item) => {
@@ -121,13 +120,7 @@ export default function ChatList() {
   useEffect(() => {
     const unsubscribeNewMessage = websocketService.onNewMessage((data) => {
       const { chatId, message } = data;
-      
-      console.log(`🔄 [ChatList] Optimistic update for chat ${chatId}:`, {
-        type: message.type,
-        text: message.text,
-        senderId: message.senderId,
-      });
-      
+
       // Update optimistic state
       const currentOptimistic = optimisticUpdatesRef.current.get(chatId) || {};
       optimisticUpdatesRef.current.set(chatId, {
@@ -141,11 +134,8 @@ export default function ChatList() {
       // Update chats state immediately
       setChats((prevChats) => {
         const chatExists = prevChats.some((chat) => chat.chatId === chatId);
-        
+
         if (!chatExists) {
-          console.log(`⚠️ [ChatList] Chat ${chatId} not found in state, optimistic update will apply when Firestore loads`);
-          // Chat not in state yet, but optimistic update is saved
-          // It will be merged when Firestore onSnapshot triggers
           return prevChats;
         }
 
@@ -153,16 +143,12 @@ export default function ChatList() {
           if (chat.chatId === chatId) {
             const updatedChat = {
               ...chat,
-              lastMessage: message.type === "snap" ? "📷 Sent a photo" : message.text,
+              lastMessage:
+                message.type === "snap" ? "📷 Sent a photo" : message.text,
               lastSenderId: message.senderId,
               isSeen: message.senderId === user?.uid ? true : false,
               updatedAt: Date.now(),
             };
-            console.log(`✅ [ChatList] Updated chat ${chatId} optimistically:`, {
-              lastMessage: updatedChat.lastMessage,
-              lastSenderId: updatedChat.lastSenderId,
-              isSeen: updatedChat.isSeen,
-            });
             return updatedChat;
           }
           return chat;

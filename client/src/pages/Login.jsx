@@ -25,7 +25,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   // Destructure auth functions from your context
-  const { user, loginWithEmail, loginWithGoogle, signOut } = useAuth();
+  const { user, loginWithEmail, loginWithGoogle, logout } = useAuth();
 
   const handleBack = () => navigate("/");
 
@@ -292,7 +292,7 @@ export default function LoginPage() {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => signOut(auth)}
+              onClick={() => logout(auth)}
               className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors text-slate-600 font-medium w-full justify-center"
             >
               <LogOut size={18} />
@@ -303,7 +303,7 @@ export default function LoginPage() {
       </motion.div>
 
       <div className="fixed bottom-6 text-xs font-medium text-slate-400 select-none">
-        Secure Login System © 2024
+        Secure Login System © 2025
       </div>
     </div>
   );
