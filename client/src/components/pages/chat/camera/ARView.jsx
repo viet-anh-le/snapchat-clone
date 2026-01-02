@@ -7,37 +7,28 @@ import {
 } from "react";
 import Webcam from "react-webcam";
 import { FaceMesh } from "@mediapipe/face_mesh";
-import { Camera } from "@mediapipe/camera_utils";
 import { drawSceneHelper } from "../../../../../helpers/drawScene";
 
 const ARView = forwardRef(({ isFrontCamera, zoom, filter, isActive }, ref) => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const latestLandmarksRef = useRef(null);
+  const faceMeshRef = useRef(null);
+  const isProcessingRef = useRef(false);
 
   const videoConstraints = {
     width: 720,
     height: 1280,
     facingMode: isFrontCamera ? "user" : "environment",
+    frameRate: { ideal: 30, max: 60 },
   };
 
-  /* --- 5. RENDER LOOP --- */
-  const drawScene = useCallback(() => {
-    const canvas = canvasRef.current;
-    const video = webcamRef.current?.video;
-    drawSceneHelper(filter, canvas, video, latestLandmarksRef);
-    if (isActive) {
-      requestAnimationFrame(drawScene);
-    }
-  }, [filter, isActive]);
-
   useEffect(() => {
-    if (!isActive) return;
-
     const faceMesh = new FaceMesh({
       locateFile: (file) =>
         `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
     });
+
     faceMesh.setOptions({
       maxNumFaces: 1,
       refineLandmarks: true,
@@ -45,6 +36,8 @@ const ARView = forwardRef(({ isFrontCamera, zoom, filter, isActive }, ref) => {
     });
 
     faceMesh.onResults((results) => {
+      isProcessingRef.current = false;
+
       if (results.multiFaceLandmarks?.length > 0) {
         latestLandmarksRef.current = results.multiFaceLandmarks[0];
       } else {
@@ -52,41 +45,45 @@ const ARView = forwardRef(({ isFrontCamera, zoom, filter, isActive }, ref) => {
       }
     });
 
-    let camera;
-    let setupTimeout;
-
-    if (webcamRef.current && webcamRef.current.video) {
-      const setupCamera = () => {
-        const video = webcamRef.current?.video;
-        if (!video || video.readyState < 2) {
-          setupTimeout = setTimeout(setupCamera, 100);
-          return;
-        }
-
-        const videoWidth = video.videoWidth || 720;
-        const videoHeight = video.videoHeight || 1280;
-
-        camera = new Camera(webcamRef.current.video, {
-          onFrame: async () => {
-            if (webcamRef.current?.video) {
-              await faceMesh.send({ image: webcamRef.current.video });
-            }
-          },
-          width: videoWidth,
-          height: videoHeight,
-        });
-        camera.start();
-        requestAnimationFrame(drawScene);
-      };
-
-      setupCamera();
-    }
+    faceMeshRef.current = faceMesh;
 
     return () => {
-      if (setupTimeout) clearTimeout(setupTimeout);
-      if (camera) camera.stop();
       faceMesh.close();
+      faceMeshRef.current = null;
     };
+  }, []);
+
+  const drawScene = useCallback(async () => {
+    if (!isActive) return;
+
+    const video = webcamRef.current?.video;
+    const canvas = canvasRef.current;
+
+    drawSceneHelper(filter, canvas, video, latestLandmarksRef);
+
+    if (
+      video &&
+      video.readyState === 4 &&
+      faceMeshRef.current &&
+      !isProcessingRef.current
+    ) {
+      isProcessingRef.current = true;
+      try {
+        await faceMeshRef.current.send({ image: video });
+      } catch (error) {
+        console.error("Mediapipe send error:", error);
+        isProcessingRef.current = false;
+      }
+    }
+    requestAnimationFrame(drawScene);
+  }, [filter, isActive]);
+
+  useEffect(() => {
+    let animationId;
+    if (isActive) {
+      animationId = requestAnimationFrame(drawScene);
+    }
+    return () => cancelAnimationFrame(animationId);
   }, [isActive, drawScene]);
 
   useImperativeHandle(ref, () => ({
@@ -107,10 +104,12 @@ const ARView = forwardRef(({ isFrontCamera, zoom, filter, isActive }, ref) => {
         audio={false}
         width={720}
         height={1280}
+        screenshotFormat="image/jpeg"
         videoConstraints={videoConstraints}
-        className="hidden"
+        style={{ position: "absolute", opacity: 0, zIndex: -1 }}
+        onUserMedia={() => console.log("Webcam onUserMedia fired!")}
+        onUserMediaError={(err) => console.error("Webcam Error:", err)}
       />
-
       <canvas
         ref={canvasRef}
         width={720}

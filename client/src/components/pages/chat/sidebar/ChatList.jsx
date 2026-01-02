@@ -208,8 +208,6 @@ export default function ChatList() {
     const unsubscribeSidebar = websocketService.onUpdateSidebar(
       async (data) => {
         const { chatId, lastMessage, lastSenderId, isSeen, updatedAt } = data;
-        console.log("[SOCKET] Nhận data update-sidebar:", data);
-
         const timeMillis =
           typeof updatedAt === "number" ? updatedAt : toMillis(updatedAt);
         setChats((prevChats) => {

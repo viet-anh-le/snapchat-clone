@@ -11,12 +11,10 @@ function App() {
     if (loading) return;
     if (user?.uid) {
       if (!websocketService.isConnected) {
-        console.log("[App] User detected -> Connecting Socket...");
         websocketService.connect();
       }
     } else {
       if (websocketService.isConnected) {
-        console.log("[App] No User -> Disconnecting Socket...");
         websocketService.disconnect();
       }
     }

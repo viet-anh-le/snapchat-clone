@@ -46,7 +46,6 @@ export default function ChatLayout() {
 
   useEffect(() => {
     const unsubscribeGetUsers = websocketService.onGetOnlineUsers((data) => {
-      console.log(data);
       const initialStatusMap = {};
       data.forEach((u) => {
         initialStatusMap[u.userId] = {
