@@ -45,6 +45,14 @@ const formatMessageTime = (timestamp) => {
   });
 };
 
+const mergeMessages = (currentMessages, newMessages) => {
+  const msgMap = new Map();
+  currentMessages.forEach((msg) => msgMap.set(msg.id, msg));
+  const incoming = Array.isArray(newMessages) ? newMessages : [newMessages];
+  incoming.forEach((msg) => msgMap.set(msg.id, msg));
+  return Array.from(msgMap.values()).sort((a, b) => a.createdAt - b.createdAt);
+};
+
 export default function Chat() {
   const { close, setClose, selectedChatId, receiver, setReceiver } =
     useContext(ChatContext);
@@ -253,6 +261,8 @@ export default function Chat() {
 
   useEffect(() => {
     if (!selectedChatId) return;
+    setMessages([]);
+    const currentChatId = selectedChatId;
 
     const chatDocRef = doc(db, "chats", selectedChatId);
     const unsubscribeChatMetadata = onSnapshot(
@@ -271,34 +281,30 @@ export default function Chat() {
     const loadChatData = async () => {
       try {
         const messagesRef = collection(db, "chats", selectedChatId, "messages");
-
         const q = query(messagesRef, orderBy("createdAt", "asc"));
-
         const querySnapshot = await getDocs(q);
 
-        const msgs = [];
+        const historyMsgs = [];
         querySnapshot.forEach((doc) => {
-          msgs.push({ id: doc.id, ...doc.data() });
+          historyMsgs.push({ id: doc.id, ...doc.data() });
         });
-
-        setMessages(msgs);
+        setMessages((prevMessages) => {
+          return mergeMessages(prevMessages, historyMsgs);
+        });
       } catch (error) {
         console.error("Error loading chat data:", error);
       }
     };
 
     loadChatData();
-    const currentChatId = selectedChatId;
 
     const unsubscribeNewMessage = websocketService.onNewMessage((data) => {
       if (data.chatId === currentChatId) {
-        setMessages((prev) => {
-          const exists = prev.some((msg) => msg.id === data.message.id);
-          if (exists) return prev;
-          return [...prev, data.message];
+        setMessages((prevMessages) => {
+          return mergeMessages(prevMessages, data.message);
         });
         setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, 100);
       }
     });
