@@ -12,6 +12,7 @@ import {
   query,
   orderBy,
   getDocs,
+  onSnapshot,
 } from "firebase/firestore";
 import {
   ref,
@@ -253,20 +254,22 @@ export default function Chat() {
   useEffect(() => {
     if (!selectedChatId) return;
 
+    const chatDocRef = doc(db, "chats", selectedChatId);
+    const unsubscribeChatMetadata = onSnapshot(
+      chatDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setChatMetadata(data);
+        }
+      },
+      (error) => {
+        console.error("Error listening to chat metadata:", error);
+      }
+    );
+
     const loadChatData = async () => {
       try {
-        const chatDocRef = doc(db, "chats", selectedChatId);
-        const chatSnap = await getDoc(chatDocRef);
-
-        if (chatSnap.exists()) {
-          const data = chatSnap.data();
-          setChatMetadata(data);
-        } else {
-          setChatMetadata(null);
-          setMessages([]);
-          return;
-        }
-
         const messagesRef = collection(db, "chats", selectedChatId, "messages");
 
         const q = query(messagesRef, orderBy("createdAt", "asc"));
@@ -342,6 +345,7 @@ export default function Chat() {
 
     return () => {
       unsubscribeNewMessage();
+      unsubscribeChatMetadata();
       unsubscribeSnapViewed();
       unsubscribeError();
       unsubscribeReaction();
