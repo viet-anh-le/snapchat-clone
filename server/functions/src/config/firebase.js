@@ -7,6 +7,7 @@ if (!admin.apps.length) {
       process.env.GOOGLE_APPLICATION_CREDENTIALS || "./firebase-admin.json";
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
+      storageBucket: "snapchat-378cb.firebasestorage.app",
     });
   } catch (error) {
     console.warn("Firebase Admin may already be initialized:", error.message);

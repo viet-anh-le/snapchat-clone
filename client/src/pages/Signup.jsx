@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
@@ -17,6 +17,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
 
   // Visibility states for passwords
   const [showPassword, setShowPassword] = useState(false);
@@ -26,7 +27,7 @@ export default function SignupPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const { signupWithEmail } = useAuth(); // Assuming you have Google auth in context too
+  const { signupWithEmail, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   // Helper to handle errors nicely
@@ -39,21 +40,29 @@ export default function SignupPage() {
     setError("");
     setLoading(true);
     try {
-      // await signInWithPopup(auth, googleProvider); // Uncomment when ready
-      // navigate("/"); // Redirect after success
+      await loginWithGoogle();
       setSuccess("Successfully signed up with Google!");
+      setTimeout(() => navigate("/"), 1000);
     } catch (err) {
       console.error(err);
-      showError(err.message || "Google signup failed");
+      if (err.code === "auth/popup-closed-by-user") {
+        showError("Signup cancelled");
+      } else {
+        showError(err.message || "Google signup failed");
+      }
     } finally {
       setLoading(false);
     }
   }
-
   async function handleEmailSignup(e) {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    if (!displayName.trim()) {
+      showError("Please enter your display name.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       showError("Passwords do not match.");
@@ -67,8 +76,9 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await signupWithEmail(email, password);
+      await signupWithEmail(email, password, displayName);
       setSuccess("Account created successfully!");
+      setDisplayName("");
       setEmail("");
       setPassword("");
       setConfirmPassword("");
@@ -137,6 +147,25 @@ export default function SignupPage() {
         </div>
 
         <form onSubmit={handleEmailSignup} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700 ml-1">
+              Full Name
+            </label>
+            <div className="relative group">
+              <UserPlus
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
+                size={18}
+              />
+              <input
+                type="text"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400 text-black"
+                placeholder="John Doe"
+              />
+            </div>
+          </div>
           {/* Email */}
           <div className="space-y-1">
             <label className="text-sm font-medium text-slate-700 ml-1">

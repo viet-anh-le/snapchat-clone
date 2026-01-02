@@ -102,7 +102,6 @@ module.exports = (io, socket, activeRooms) => {
     }
   });
 
-  // Leave video call room
   socket.on("leave-video-room", (payload) => {
     const isString = typeof payload === "string";
     const roomId = isString ? payload : payload?.roomId;
@@ -112,28 +111,17 @@ module.exports = (io, socket, activeRooms) => {
       callType = "video",
     } = !isString ? payload : {};
     if (!roomId) return;
-
     socket.leave(`video-room:${roomId}`);
-
-    console.log(chatId, durationSec);
-
     if (activeRooms.has(roomId)) {
       const roomParticipants = activeRooms.get(roomId);
-
-      if (roomParticipants.has(socket.id)) {
-        roomParticipants.delete(socket.id);
-      }
-
-      if (roomParticipants.size === 0) {
-        activeRooms.delete(roomId);
-      }
+      if (roomParticipants.has(socket.id)) roomParticipants.delete(socket.id);
+      if (roomParticipants.size === 0) activeRooms.delete(roomId);
     }
 
     socket.to(`video-room:${roomId}`).emit("user-left", {
       userId,
       socketId: socket.id,
     });
-
     if (chatId) {
       const durationText = `${durationSec}s`;
       const messageText =
@@ -143,51 +131,55 @@ module.exports = (io, socket, activeRooms) => {
 
       (async () => {
         try {
+          const chatRef = db.collection("chats").doc(chatId);
+          const messageRef = chatRef.collection("messages").doc();
+          const messageId = messageRef.id;
+
           const systemMessage = {
-            id: crypto.randomUUID(),
+            id: messageId,
             senderId: userId,
             text: messageText,
             type: "call",
             callType: callType,
             isGroupLog: true,
             duration: durationSec,
-            createdAt: new Date(),
+            createdAt: Date.now(),
             viewedBy: [userId],
           };
-
-          await db
-            .collection("chats")
-            .doc(chatId)
-            .update({
-              messages: FieldValue.arrayUnion(systemMessage),
-            });
-
+          await messageRef.set({
+            ...systemMessage,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          await chatRef.update({
+            lastMessage: messageText,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastSenderId: userId,
+          });
           io.to(`chat:${chatId}`).emit("new-message", {
             chatId,
             message: systemMessage,
           });
-
-          console.log(`[SERVER] Group call log saved for user ${userId}`);
+          io.to(`user:${userId}`).emit("update-sidebar", {
+            chatId,
+            lastMessage: messageText,
+            updatedAt: Date.now(),
+            lastSenderId: userId,
+            isSeen: true,
+            isGroup: true,
+          });
         } catch (error) {
           console.error("Error saving group call log:", error);
         }
       })();
-
       updateLastMessageBackground(chatId, messageText, userId);
     }
   });
 
-  // Handle call cancellation before it is answered
+  // Cancel call
   socket.on("cancel-call", async (data) => {
     const { targetUserId, roomId, chatId, callType = "video" } = data || {};
-    if (!targetUserId) {
-      console.warn("[SERVER] cancel-call missing targetUserId");
-      return;
-    }
+    if (!targetUserId) return;
 
-    console.log(
-      `[SERVER] Cancel-call from ${userId} to ${targetUserId} for room ${roomId}`
-    );
     io.to(`user:${targetUserId}`).emit("call-cancelled", {
       callerId: userId,
       roomId,
@@ -197,30 +189,52 @@ module.exports = (io, socket, activeRooms) => {
       const messageText = "Cuộc gọi nhỡ";
       (async () => {
         try {
+          const chatRef = db.collection("chats").doc(chatId);
+          const messageRef = chatRef.collection("messages").doc();
+          const messageId = messageRef.id;
+
           const missedCallMessage = {
-            id: crypto.randomUUID(),
+            id: messageId,
             senderId: userId,
             text: messageText,
             type: "call",
             callType: callType,
             callId: roomId,
-            createdAt: new Date(),
+            createdAt: Date.now(),
             viewedBy: [userId],
           };
 
-          await db
-            .collection("chats")
-            .doc(chatId)
-            .update({
-              messages: FieldValue.arrayUnion(missedCallMessage),
-            });
+          await messageRef.set({
+            ...missedCallMessage,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+
+          await chatRef.update({
+            lastMessage: messageText,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastSenderId: userId,
+          });
 
           io.to(`chat:${chatId}`).emit("new-message", {
             chatId,
             message: missedCallMessage,
           });
 
-          console.log("[SERVER] Missed call log saved.");
+          const sidebarData = {
+            chatId,
+            lastMessage: `${messageText}`,
+            updatedAt: Date.now(),
+            lastSenderId: userId,
+            receiverId: userId,
+          };
+          io.to(`user:${userId}`).emit("update-sidebar", {
+            ...sidebarData,
+            isSeen: true,
+          });
+          io.to(`user:${targetUserId}`).emit("update-sidebar", {
+            ...sidebarData,
+            isSeen: false,
+          });
         } catch (error) {
           console.error("Error saving missed call log:", error);
         }
@@ -245,6 +259,67 @@ module.exports = (io, socket, activeRooms) => {
       roomId,
       chatId,
     });
+
+    if (chatId) {
+      const messageText = "Đã từ chối cuộc gọi";
+
+      (async () => {
+        try {
+          const chatRef = db.collection("chats").doc(chatId);
+          const messageRef = chatRef.collection("messages").doc();
+          const messageId = messageRef.id;
+
+          const declinedMessage = {
+            id: messageId,
+            senderId: userId,
+            text: messageText,
+            type: "call",
+            callType: callType,
+            callId: roomId,
+            createdAt: Date.now(),
+            viewedBy: [userId],
+          };
+
+          await messageRef.set({
+            ...declinedMessage,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+
+          await chatRef.update({
+            lastMessage: messageText,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastSenderId: userId,
+          });
+
+          io.to(`chat:${chatId}`).emit("new-message", {
+            chatId,
+            message: declinedMessage,
+          });
+
+          const sidebarData = {
+            chatId,
+            lastMessage: `${messageText}`,
+            updatedAt: Date.now(),
+            lastSenderId: userId,
+          };
+
+          io.to(`user:${userId}`).emit("update-sidebar", {
+            ...sidebarData,
+            isSeen: true,
+          });
+
+          io.to(`user:${targetUserId}`).emit("update-sidebar", {
+            ...sidebarData,
+            isSeen: false,
+          });
+        } catch (error) {
+          console.error("Error saving declined call log:", error);
+        }
+      })();
+
+      // Background update cho chắc chắn
+      updateLastMessageBackground(chatId, messageText, userId);
+    }
   });
 
   // Handle call ended (while both in room)
@@ -256,13 +331,8 @@ module.exports = (io, socket, activeRooms) => {
       durationSec,
       callType = "video",
     } = data;
-    if (!targetUserId) {
-      console.warn("[SERVER] call-ended missing targetUserId");
-      return;
-    }
-    console.log(
-      `[SERVER] Call ended by ${userId}, notifying ${targetUserId} (room ${roomId})`
-    );
+    if (!targetUserId) return;
+
     io.to(`user:${targetUserId}`).emit("call-ended", {
       callerId: userId,
       roomId,
@@ -275,33 +345,54 @@ module.exports = (io, socket, activeRooms) => {
       const messageText = `Cuộc gọi kết thúc • ${durationSec}s`;
       (async () => {
         try {
+          const chatRef = db.collection("chats").doc(chatId);
+          const messageRef = chatRef.collection("messages").doc();
+          const messageId = messageRef.id;
+
           const systemMessage = {
-            id: crypto.randomUUID(),
+            id: messageId,
             senderId: userId,
             text: messageText,
             type: "call",
             callType: callType,
-            createdAt: new Date(),
+            createdAt: Date.now(),
             viewedBy: [userId],
           };
-
-          await db
-            .collection("chats")
-            .doc(chatId)
-            .update({
-              messages: FieldValue.arrayUnion(systemMessage),
-            });
-
+          await messageRef.set({
+            ...systemMessage,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          await chatRef.update({
+            lastMessage: messageText,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastSenderId: userId,
+          });
           io.to(`chat:${chatId}`).emit("new-message", {
             chatId,
             message: systemMessage,
           });
+          const sidebarData = {
+            chatId,
+            lastMessage: messageText,
+            updatedAt: Date.now(),
+            lastSenderId: userId,
+          };
 
-          console.log("[SERVER] System message created automatically.");
+          io.to(`user:${userId}`).emit("update-sidebar", {
+            ...sidebarData,
+            receiverId: targetUserId,
+            isSeen: true,
+          });
+          io.to(`user:${targetUserId}`).emit("update-sidebar", {
+            ...sidebarData,
+            isSeen: false,
+            receiverId: userId,
+          });
         } catch (err) {
           console.error("Error saving system message:", err);
         }
       })();
+
       updateLastMessageBackground(chatId, messageText, userId);
     }
   });

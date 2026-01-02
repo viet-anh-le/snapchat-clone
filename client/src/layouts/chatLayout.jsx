@@ -3,13 +3,18 @@ import "./chat.css";
 import { useEffect, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { CloseOutlined, MenuOutlined } from "@ant-design/icons";
+import { Modal } from "antd";
 
 import { ChatContext } from "../context/ChatContext";
+import { websocketService } from "../lib/websocket";
+import { useAuth } from "../context/AuthContext";
 
 import SideBar from "../components/pages/chat/sidebar/SideBar";
 import NewChatPanel from "../components/pages/chat/sidebar/NewChatPanel";
 
 export default function ChatLayout() {
+  const { user } = useAuth();
+  const [userStatuses, setUserStatuses] = useState({});
   const [close, setClose] = useState(true);
   const [toggleAddUser, setToggleAddUser] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState(null);
@@ -17,6 +22,7 @@ export default function ChatLayout() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [totalUnread, setTotalUnread] = useState(0);
   const lastIsMobile = useRef(null);
 
   useEffect(() => {
@@ -24,7 +30,6 @@ export default function ChatLayout() {
       const mobileView = window.innerWidth < 768;
       setIsMobile(mobileView);
 
-      // Only toggle sidebar when crossing the breakpoint to avoid closing it while open
       if (
         lastIsMobile.current === null ||
         lastIsMobile.current !== mobileView
@@ -38,6 +43,70 @@ export default function ChatLayout() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    const unsubscribeGetUsers = websocketService.onGetOnlineUsers((data) => {
+      console.log(data);
+      const initialStatusMap = {};
+      data.forEach((u) => {
+        initialStatusMap[u.userId] = {
+          isOnline: true,
+          lastActive: u.lastActive || Date.now(),
+        };
+      });
+      setUserStatuses((prev) => ({
+        ...prev,
+        ...initialStatusMap,
+      }));
+    });
+
+    const unsubscribeStatusChange = websocketService.onUserStatus((data) => {
+      setUserStatuses((prev) => ({
+        ...prev,
+        [data.userId]: {
+          isOnline: data.isOnline,
+          lastActive: data.lastActive,
+        },
+      }));
+    });
+
+    if (user?.uid) {
+      websocketService.requestOnlineUsers();
+    }
+
+    return () => {
+      unsubscribeGetUsers();
+      unsubscribeStatusChange();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribeRemoved = websocketService.onChatRemoved((data) => {
+      const { chatId, groupName } = data;
+      if (selectedChatId === chatId) {
+        setSelectedChatId(null);
+        setReceiver(null);
+        setClose(true);
+        Modal.warning({
+          title: "Thông báo",
+          content: `Bạn đã bị mời ra khỏi nhóm "${
+            groupName || "này"
+          }" (hoặc nhóm đã bị giải tán).`,
+          centered: true,
+          okText: "Đã hiểu",
+        });
+      }
+    });
+
+    return () => {
+      unsubscribeRemoved();
+    };
+  }, [user, selectedChatId, setSelectedChatId, setReceiver]);
+
+  const getUserStatus = (uid) => {
+    return userStatuses[uid] || { isOnline: false, lastActive: null };
+  };
 
   return (
     <ChatContext.Provider
@@ -55,6 +124,9 @@ export default function ChatLayout() {
         sidebarOpen,
         setSidebarOpen,
         isMobile,
+        getUserStatus,
+        totalUnread,
+        setTotalUnread,
       }}
     >
       <div className="chat-layout relative h-screen grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[340px_1fr] overflow-hidden bg-transparent">

@@ -78,6 +78,11 @@ export const userReducer = (state = defaultUserState, action) => {
     let participants = { ...state.participants, ...payload.newUser };
     state = { ...state, participants };
     return state;
+  } else if (action.type == "CLEAR_PARTICIPANTS") {
+    return {
+      ...state,
+      participants: {},
+    };
   }
   return state;
 };

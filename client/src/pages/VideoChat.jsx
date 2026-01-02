@@ -15,6 +15,7 @@ import {
   removeParticipant,
   updateParticipant,
   updateUser,
+  clearParticipants,
 } from "@/store/actioncreator";
 import { websocketService } from "@/lib/websocket";
 import { useAuth } from "@/context/AuthContext";
@@ -51,6 +52,15 @@ export default function VideoChat() {
   const { toast, toasts } = useToast();
 
   const [messages] = useState([]);
+
+  const stopStream = (stream) => {
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        track.stop();
+        track.enabled = false;
+      });
+    }
+  };
 
   const sendCancelIfNeeded = () => {
     if (cancelSentRef.current) return;
@@ -162,14 +172,18 @@ export default function VideoChat() {
     sendCancelIfNeeded();
 
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      stopStream(streamRef.current);
+      streamRef.current = null;
     }
 
-    // if (roomId) {
-    //   websocketService.leaveVideoRoom(roomId);
-    // }
+    if (mainStream) {
+      stopStream(mainStream);
+    }
 
-    // reset refs for next call
+    dispatch(setMainStream(null));
+    dispatch(clearParticipants());
+
+    participantsRef.current = {};
     otherUserIdRef.current = null;
     otherJoinedRef.current = false;
     callEndLoggedRef.current = false;
@@ -177,6 +191,10 @@ export default function VideoChat() {
     callEndedSentRef.current = false;
     cancelSentRef.current = false;
     startTimeRef.current = Date.now();
+
+    if (roomId) {
+      websocketService.leaveVideoRoom(roomId);
+    }
   };
 
   const clearToasts = useCallback(() => {
@@ -193,9 +211,6 @@ export default function VideoChat() {
     const doNavigate = () => {
       clearToasts();
       navigate("/chat", { replace: true });
-      if (reload) {
-        window.location.reload();
-      }
     };
     if (delayMs > 0) {
       setTimeout(doNavigate, delayMs);
@@ -227,7 +242,7 @@ export default function VideoChat() {
     } else {
       isCallCompletedRef.current = true;
       sendCallEnd(durationSec);
-      await endCall(null, true, 0);
+      await endCall(null, false, 0);
     }
   };
 
@@ -237,10 +252,13 @@ export default function VideoChat() {
       navigate("/");
       return;
     }
-
+    let isMounted = true;
     const initVideoCall = async () => {
       if (!user?.uid) return;
-
+      if (streamRef.current) {
+        console.log("Stream already exists, skipping getUserMedia");
+        return;
+      }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: !isAudioOnly,
@@ -251,11 +269,14 @@ export default function VideoChat() {
             sampleRate: 48000,
           },
         });
-        // Lưu vào Ref để dùng cho cleanup sau này
+
+        if (!isMounted) {
+          stopStream(stream);
+          return;
+        }
+        console.log("Stream started:", stream.id);
         streamRef.current = stream;
-
         dispatch(setMainStream(stream));
-
         const userId = user.uid;
         const displayName = user.displayName || "Anonymous";
         const photoURL = user.photoURL || "/default-avatar.png";
@@ -349,7 +370,6 @@ export default function VideoChat() {
           endCall("Cuộc gọi đã kết thúc", false, 500);
         });
 
-        // Now join video room (profile included so peers get display info)
         websocketService.joinVideoRoom(roomId, { displayName, photoURL });
 
         const handleBeforeUnload = (e) => {
@@ -381,6 +401,27 @@ export default function VideoChat() {
     };
 
     initVideoCall();
+
+    return () => {
+      isMounted = false;
+      console.log("Unmounting VideoChat...");
+
+      if (streamRef.current) {
+        console.log("Stopping streamRef on unmount");
+        stopStream(streamRef.current);
+        streamRef.current = null;
+      }
+
+      if (mainStream) {
+        stopStream(mainStream);
+      }
+
+      dispatch(setMainStream(null));
+
+      if (roomId && !leaveCallTriggeredRef.current) {
+        websocketService.leaveVideoRoom(roomId);
+      }
+    };
   }, [user?.uid, roomId, dispatch, navigate]);
 
   return (

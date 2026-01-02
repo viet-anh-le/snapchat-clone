@@ -19,30 +19,30 @@ import SendModal from "../camera/SendModal";
 
 const FILTERS = [
   { id: "none", name: "Normal", icon: <X size={20} />, color: "bg-gray-600" },
-  {
-    id: "big_mouth",
-    name: "Yapper",
-    icon: <Megaphone size={20} />,
-    color: "bg-orange-500",
-  },
-  {
-    id: "bug_eyes",
-    name: "Buggin",
-    icon: <Eye size={20} />,
-    color: "bg-purple-500",
-  },
-  {
-    id: "schnoz",
-    name: "Schnoz",
-    icon: <User size={20} />,
-    color: "bg-yellow-600",
-  },
-  {
-    id: "wacky",
-    name: "Wacky",
-    icon: <Smile size={20} />,
-    color: "bg-blue-500",
-  },
+  // {
+  //   id: "big_mouth",
+  //   name: "Yapper",
+  //   icon: <Megaphone size={20} />,
+  //   color: "bg-orange-500",
+  // },
+  // {
+  //   id: "bug_eyes",
+  //   name: "Buggin",
+  //   icon: <Eye size={20} />,
+  //   color: "bg-purple-500",
+  // },
+  // {
+  //   id: "schnoz",
+  //   name: "Schnoz",
+  //   icon: <User size={20} />,
+  //   color: "bg-yellow-600",
+  // },
+  // {
+  //   id: "wacky",
+  //   name: "Wacky",
+  //   icon: <Smile size={20} />,
+  //   color: "bg-blue-500",
+  // },
   { id: "kitty", name: "Kitty", icon: <Cat size={20} />, color: "bg-pink-500" },
   {
     id: "boss",

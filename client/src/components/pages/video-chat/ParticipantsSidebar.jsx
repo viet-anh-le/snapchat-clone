@@ -17,7 +17,7 @@ const ParticipantsSidebar = ({ isOpen, onClose, participants }) => {
 
   const getInitials = (name) => {
     return name
-      .split(" ")
+      ?.split(" ")
       .map((n) => n[0])
       .join("")
       .toUpperCase();

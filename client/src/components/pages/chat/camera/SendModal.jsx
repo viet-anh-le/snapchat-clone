@@ -9,13 +9,13 @@ import {
 } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../../../lib/firebase";
+import { websocketService } from "../../../../lib/websocket";
 import {
   SearchOutlined,
   CloseOutlined,
   SendOutlined,
   LoadingOutlined,
   CheckCircleFilled,
-  TeamOutlined,
 } from "@ant-design/icons";
 import { message } from "antd";
 
@@ -91,51 +91,26 @@ const SendModal = ({ isOpen, onClose, capturedImage, user, onSuccess }) => {
 
       const sendPromises = selectedUsers.map(async (receiver) => {
         const selectedChatId = receiver.chatId;
-        const messageId = uuidv4();
-        const newMessage = {
-          id: messageId,
-          senderId: user.uid,
-          text: "Sent a Snap",
-          img: downloadURL,
-          type: "snap",
-          viewedBy: [],
-          createdAt: new Date(),
-        };
 
-        await updateDoc(doc(db, "chats", selectedChatId), {
-          messages: arrayUnion(newMessage),
-        });
+        let groupMembers = [];
+        if (receiver.isGroup) {
+          groupMembers = receiver.members || [];
+        }
 
-        let recipientIds = receiver.isGroup
-          ? receiver.members || []
-          : [user.uid, receiver.uid];
-        await Promise.all(
-          recipientIds.map(async (id) => {
-            const userChatsRef = doc(db, "userchats", id);
-            const userChatsSnapshot = await getDoc(userChatsRef);
-
-            if (userChatsSnapshot.exists()) {
-              const userChatsData = userChatsSnapshot.data();
-              const chatIndex = userChatsData.chats.findIndex(
-                (c) => c.chatId === selectedChatId
-              );
-
-              if (chatIndex !== -1) {
-                userChatsData.chats[chatIndex].lastMessage = "📷 Sent a snap";
-                userChatsData.chats[chatIndex].isSeen = id === user.uid;
-                userChatsData.chats[chatIndex].updatedAt = Date.now();
-
-                await updateDoc(userChatsRef, {
-                  chats: userChatsData.chats,
-                });
-              }
-            }
-          })
+        websocketService.sendMessage(
+          selectedChatId,
+          "Sent a Snap",
+          "snap",
+          downloadURL,
+          receiver.uid,
+          groupMembers
         );
+        return Promise.resolve();
       });
 
       await Promise.all(sendPromises);
-      message.success("Sent Snap! 🚀");
+
+      message.success("Sent Snap!");
       onSuccess();
     } catch (error) {
       console.error(error);
@@ -144,7 +119,6 @@ const SendModal = ({ isOpen, onClose, capturedImage, user, onSuccess }) => {
       setSending(false);
     }
   };
-
   const handleToggleSelect = (friend) => {
     setSelectedUsers((prev) =>
       prev.some((u) => u.uid === friend.uid)

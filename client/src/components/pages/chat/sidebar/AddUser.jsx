@@ -32,7 +32,7 @@ import { ChatContext } from "../../../../context/ChatContext";
 import { useAuth } from "../../../../context/AuthContext";
 
 export default function AddUser() {
-  const { toggleAddUser } = useContext(ChatContext);
+  const { toggleAddUser, setToggleAddUser } = useContext(ChatContext);
   const { user } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -358,6 +358,13 @@ export default function AddUser() {
       {contextHolder}
       {toggleAddUser && (
         <div className="w-[400px] bg-[#121212] custom-add-user p-3 rounded-3xl">
+          <button
+            onClick={() => setToggleAddUser(false)}
+            className="absolute top-4 right-4 text-gray-400 hover:text-white hover:bg-white/10 rounded-full w-8 h-8 flex items-center justify-center transition-all z-50 cursor-pointer"
+            title="Close"
+          >
+            <CloseOutlined style={{ fontSize: "18px" }} />
+          </button>
           <Tabs
             defaultActiveKey="1"
             items={tabItems}

@@ -1,4 +1,5 @@
 const { db, FieldValue } = require("../config/firebase");
+const BlockCache = require("../../../cache/BlockCache");
 
 // API 1: Gửi lời mời kết bạn
 exports.sendFriendRequest = async (req, res) => {
@@ -73,7 +74,8 @@ exports.sendFriendRequest = async (req, res) => {
 exports.acceptFriendRequest = async (req, res) => {
   try {
     const myUid = req.user.uid;
-    const partnerUid = req.body.targetUid; // ID người gửi lời mời (người mình sắp accept)
+    const partnerUid = req.body.targetUid;
+    const io = req.app.get("socketio");
 
     if (!partnerUid) {
       return res.status(400).json({ error: "targetUid is required" });
@@ -83,86 +85,137 @@ exports.acceptFriendRequest = async (req, res) => {
     const partnerRef = db.collection("users").doc(partnerUid);
     const myUserChatRef = db.collection("userchats").doc(myUid);
     const partnerUserChatRef = db.collection("userchats").doc(partnerUid);
-
-    const myDoc = await db.collection("users").doc(myUid).get();
-    const partnerDoc = await db.collection("users").doc(partnerUid).get();
-
-    if (!myDoc.exists || !partnerDoc.exists) {
-      return res.status(404).json({ error: "User không tồn tại" });
-    }
-
-    const myData = myDoc.data();
-
-    // 1. TÌM OBJECT REQUEST CŨ ĐỂ XÓA
-    const requestObject = (myData.friendRequests || []).find(
-      (req) => req.uid === partnerUid
-    );
-
-    if (!requestObject) {
-      return res.status(404).json({
-        error: "Lời mời kết bạn không tồn tại hoặc đã bị hủy.",
-      });
-    }
-
-    const chatRef = db.collection("chats").doc();
+    let socketPayload = null;
 
     await db.runTransaction(async (t) => {
-      // 2. Tạo Chat Room mới
-      t.set(chatRef, {
-        createdAt: FieldValue.serverTimestamp(),
-        messages: [],
-      });
+      const myDoc = await t.get(myRef);
+      const partnerDoc = await t.get(partnerRef);
+      const myUserChatDoc = await t.get(myUserChatRef);
+      const partnerUserChatDoc = await t.get(partnerUserChatRef);
 
-      // 3. Update UserChats cho MÌNH
-      t.set(
-        myUserChatRef,
-        {
-          chats: FieldValue.arrayUnion({
-            chatId: chatRef.id,
-            receiverId: partnerUid,
-            updatedAt: Date.now(),
-            lastMessage: "",
-          }),
-        },
-        { merge: true }
+      if (!myDoc.exists || !partnerDoc.exists) {
+        throw new Error("User không tồn tại");
+      }
+
+      const myData = myDoc.data();
+      const partnerData = partnerDoc.data();
+
+      const requestObject = (myData.friendRequests || []).find(
+        (req) => req.uid === partnerUid
       );
 
-      // 4. Update UserChats cho ĐỐI PHƯƠNG
-      t.set(
-        partnerUserChatRef,
-        {
-          chats: FieldValue.arrayUnion({
-            chatId: chatRef.id,
-            receiverId: myUid,
-            updatedAt: Date.now(),
-            lastMessage: "",
-          }),
-        },
-        { merge: true }
-      );
+      if (!requestObject) {
+        throw new Error("Lời mời kết bạn không tồn tại hoặc đã bị hủy.");
+      }
 
-      // 5. DỌN DẸP REQUEST
+      let finalChatId = null;
+      let isNewChat = false;
+
+      const myChats = myUserChatDoc.exists
+        ? myUserChatDoc.data().chats || []
+        : [];
+      const partnerChats = partnerUserChatDoc.exists
+        ? partnerUserChatDoc.data().chats || []
+        : [];
+
+      const existingChat = myChats.find((c) => c.receiverId === partnerUid);
+
+      if (existingChat) {
+        finalChatId = existingChat.chatId;
+      } else {
+        const newChatRef = db.collection("chats").doc();
+        finalChatId = newChatRef.id;
+        isNewChat = true;
+
+        t.set(newChatRef, {
+          createdAt: FieldValue.serverTimestamp(),
+          messages: [],
+        });
+      }
+
+      if (!existingChat) {
+        t.set(
+          myUserChatRef,
+          {
+            chats: FieldValue.arrayUnion({
+              chatId: finalChatId,
+              receiverId: partnerUid,
+              updatedAt: Date.now(),
+              lastMessage: "",
+            }),
+          },
+          { merge: true }
+        );
+      }
+
+      const partnerExistingChat = partnerChats.find(
+        (c) => c.receiverId === myUid
+      );
+      if (!partnerExistingChat) {
+        t.set(
+          partnerUserChatRef,
+          {
+            chats: FieldValue.arrayUnion({
+              chatId: finalChatId,
+              receiverId: myUid,
+              updatedAt: Date.now(),
+              lastMessage: "",
+            }),
+          },
+          { merge: true }
+        );
+      }
+
       t.update(myRef, {
         friendRequests: FieldValue.arrayRemove(requestObject),
-      });
-
-      t.update(partnerRef, {
-        sentRequests: FieldValue.arrayRemove(myUid),
-      });
-
-      t.update(myRef, {
         friends: FieldValue.arrayUnion(partnerUid),
       });
 
       t.update(partnerRef, {
+        sentRequests: FieldValue.arrayRemove(myUid),
         friends: FieldValue.arrayUnion(myUid),
       });
+
+      socketPayload = {
+        chatId: finalChatId,
+        lastMessage: "",
+        updatedAt: Date.now(),
+        senderId: myUid,
+        senderInfo: {
+          displayName: myData.displayName,
+          photoURL: myData.photoURL,
+        },
+        partnerInfo: {
+          displayName: partnerData.displayName,
+          photoURL: partnerData.photoURL,
+        },
+      };
     });
 
-    return res.status(200).json({ success: true, chatId: chatRef.id });
+    if (io && socketPayload) {
+      io.to(`user:${myUid}`).emit("update-sidebar", {
+        ...socketPayload,
+        receiverId: partnerUid,
+        displayName: socketPayload.partnerInfo.displayName,
+        photoURL: socketPayload.partnerInfo.photoURL,
+        isSeen: true,
+      });
+
+      // Gửi cho người kia
+      io.to(`user:${partnerUid}`).emit("update-sidebar", {
+        ...socketPayload,
+        isSeen: false,
+        receiverId: myUid,
+        displayName: socketPayload.senderInfo.displayName,
+        photoURL: socketPayload.senderInfo.photoURL,
+      });
+    }
+
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error("Error accepting friend request:", error);
-    return res.status(500).json({ error: error.message });
+    const statusCode = error.message.includes("không tồn tại") ? 404 : 500;
+    return res.status(statusCode).json({ error: error.message });
   }
 };
 
@@ -215,6 +268,7 @@ exports.blockUser = async (req, res) => {
   try {
     const myUid = req.user.uid;
     const targetUid = req.body.targetUid;
+    const io = req.app.get("socketio");
 
     if (!targetUid) {
       return res.status(400).json({ error: "targetUid is required" });
@@ -253,6 +307,16 @@ exports.blockUser = async (req, res) => {
         sentRequests: FieldValue.arrayRemove(myUid),
       });
     });
+    BlockCache.addBlock(myUid, targetUid);
+    io.to(`user:${targetUid}`).emit("relationship-updated", {
+      type: "blocked",
+      byUser: myUid,
+    });
+
+    io.to(`user:${myUid}`).emit("relationship-updated", {
+      type: "block_sent",
+      toUser: targetUid,
+    });
 
     return res.status(200).json({ success: true });
   } catch (error) {
@@ -266,6 +330,7 @@ exports.unblockUser = async (req, res) => {
   try {
     const myUid = req.user.uid;
     const targetUid = req.body.targetUid;
+    const io = req.app.get("socketio");
 
     if (!targetUid) {
       return res.status(400).json({ error: "targetUid is required" });
@@ -280,6 +345,11 @@ exports.unblockUser = async (req, res) => {
 
     await myRef.update({
       blocked: FieldValue.arrayRemove(targetUid),
+    });
+    BlockCache.removeBlock(myUid, targetUid);
+    io.to(`user:${targetUid}`).emit("relationship-updated", {
+      type: "unblocked",
+      byUser: myUid,
     });
 
     return res

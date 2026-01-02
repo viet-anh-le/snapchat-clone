@@ -3,6 +3,7 @@ const { updateLastMessageBackground } = require("../helpers/updateLastMessage");
 
 module.exports.createGroup = async (req, res) => {
   const { currentUserId, selectedUsers, groupName } = req.body;
+  const io = req.app.get("socketio");
 
   if (!selectedUsers || selectedUsers.length === 0) {
     return res.status(400).json({ error: "Cần ít nhất 1 thành viên" });
@@ -54,6 +55,24 @@ module.exports.createGroup = async (req, res) => {
 
     await batch.commit();
 
+    if (io) {
+      uniqueMemberIds.forEach((memberId) => {
+        io.to(`user:${memberId}`).emit("update-sidebar", {
+          chatId: newChatRef.id,
+          lastMessage: "Nhóm đã được tạo",
+          updatedAt: Date.now(),
+          lastSenderId: currentUserId,
+          isSeen: memberId === currentUserId,
+          receiverId: newChatRef.id,
+          type: "group",
+          isGroup: true,
+          groupName: groupName || "New Group",
+          groupPhoto: "https://cdn-icons-png.flaticon.com/512/166/166258.png",
+          members: uniqueMemberIds,
+        });
+      });
+    }
+
     return res.status(200).json({
       success: true,
       chatId: newChatRef.id,
@@ -67,46 +86,41 @@ module.exports.createGroup = async (req, res) => {
 
 module.exports.reactToMessage = async (req, res) => {
   try {
-    const { chatId, messageId, reaction } = req.body;
+    const { chatId, messageId, reaction, userDisplayName } = req.body;
     const userId = req.user.uid;
-
     const chatRef = db.collection("chats").doc(chatId);
+    const messageRef = chatRef.collection("messages").doc(messageId);
 
-    await db.runTransaction(async (t) => {
-      const doc = await t.get(chatRef);
-      if (!doc.exists) throw new Error("Chat không tồn tại");
+    const result = await db.runTransaction(async (t) => {
+      const doc = await t.get(messageRef);
+      if (!doc.exists) {
+        throw new Error("Tin nhắn không tồn tại");
+      }
 
       const data = doc.data();
-      const messages = data.messages || [];
-
-      const messageIndex = messages.findIndex((m) => m.id === messageId);
-
-      if (messageIndex === -1) {
-        throw new Error("Tin nhắn không tồn tại trong đoạn chat này");
-      }
-
-      const targetMessage = messages[messageIndex];
-      const currentReactions = targetMessage.reactions || {};
-
+      const currentReactions = data.reactions || {};
+      let action = "add";
       if (currentReactions[userId] === reaction) {
         delete currentReactions[userId];
+        action = "remove";
       } else {
         currentReactions[userId] = reaction;
+        action = "add";
       }
-      console.log(targetMessage);
-
-      targetMessage.reactions = currentReactions;
-      messages[messageIndex] = targetMessage;
-
-      t.update(chatRef, { messages: messages });
-      return res.status(200).json({
-        success: true,
-        updatedReactions: currentReactions,
-      });
+      t.update(messageRef, { reactions: currentReactions });
+      return currentReactions;
+    });
+    const notificationText = `${userDisplayName} đã bày tỏ ${reaction} với tin nhắn của bạn`;
+    console.log(notificationText);
+    updateLastMessageBackground(chatId, notificationText, userId);
+    return res.status(200).json({
+      success: true,
+      updatedReactions: result,
     });
   } catch (error) {
     console.error("Lỗi thả reaction:", error);
-    return res.status(500).json({ error: error.message });
+    const statusCode = error.message === "Tin nhắn không tồn tại" ? 404 : 500;
+    return res.status(statusCode).json({ error: error.message });
   }
 };
 
@@ -115,32 +129,58 @@ module.exports.addMemberToGroup = async (req, res) => {
     const { chatId, newMemberId } = req.body;
     const requesterId = req.user.uid;
     const io = req.app.get("socketio");
+
     const chatRef = db.collection("chats").doc(chatId);
-    const chatDoc = await chatRef.get();
-
-    if (!chatDoc.exists) {
-      return res.status(404).json({ error: "Nhóm không tồn tại" });
-    }
-
-    const chatData = chatDoc.data();
-
-    if (!chatData.members.includes(requesterId)) {
-      return res
-        .status(403)
-        .json({ error: "Bạn không có quyền thêm thành viên" });
-    }
-
-    if (chatData.members.includes(newMemberId)) {
-      return res.status(400).json({ error: "Người này đã ở trong nhóm" });
-    }
-
+    const memberRef = db.collection("users").doc(newMemberId);
     const userChatsRef = db.collection("userchats").doc(newMemberId);
 
+    const systemMessageRef = chatRef.collection("messages").doc();
+    const systemMsgId = systemMessageRef.id;
+
     await db.runTransaction(async (t) => {
+      const chatDoc = await t.get(chatRef);
       const userChatsDoc = await t.get(userChatsRef);
+      const memberDoc = await t.get(memberRef);
+
+      if (!chatDoc.exists) {
+        throw new Error("Nhóm không tồn tại");
+      }
+
+      const chatData = chatDoc.data();
+
+      if (!chatData.members.includes(requesterId)) {
+        throw new Error("Bạn không có quyền thêm thành viên");
+      }
+
+      if (chatData.members.includes(newMemberId)) {
+        throw new Error("Người này đã ở trong nhóm");
+      }
+
+      const memberName = memberDoc.exists
+        ? memberDoc.data().displayName || "Thành viên mới"
+        : "Thành viên mới";
 
       t.update(chatRef, {
-        members: admin.firestore.FieldValue.arrayUnion(newMemberId),
+        members: FieldValue.arrayUnion(newMemberId),
+        lastMessage: `đã thêm ${memberName} vào nhóm`,
+        updatedAt: FieldValue.serverTimestamp(),
+        lastSenderId: requesterId,
+      });
+
+      const systemText = `đã thêm ${memberName} vào nhóm.`;
+      const systemMessage = {
+        id: systemMsgId,
+        text: systemText,
+        senderId: requesterId,
+        createdAt: Date.now(),
+        type: "system",
+        isSystem: true,
+        viewedBy: [requesterId],
+      };
+
+      t.set(systemMessageRef, {
+        ...systemMessage,
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       const newChatEntry = {
@@ -152,13 +192,15 @@ module.exports.addMemberToGroup = async (req, res) => {
         receiverId: null,
         type: "group",
         isGroup: true,
+        groupName: chatData.groupName || "Group Chat",
+        groupPhoto: chatData.groupPhoto || "",
         displayName: chatData.groupName || "Group Chat",
         photoURL: chatData.groupPhoto || "",
       };
 
       if (userChatsDoc.exists) {
         t.update(userChatsRef, {
-          chats: admin.firestore.FieldValue.arrayUnion(newChatEntry),
+          chats: FieldValue.arrayUnion(newChatEntry),
         });
       } else {
         t.set(userChatsRef, {
@@ -166,27 +208,35 @@ module.exports.addMemberToGroup = async (req, res) => {
         });
       }
 
-      const systemText = "đã thêm một thành viên mới vào nhóm.";
-      const systemMsgId = admin.firestore().collection("_").doc().id;
-      const systemMessage = {
-        id: systemMsgId,
-        text: "đã thêm một thành viên mới vào nhóm.",
-        senderId: requesterId,
-        createdAt: new Date(),
-        type: "system",
-        isSystem: true,
-        viewedBy: [requesterId],
-      };
-
-      t.update(chatRef, {
-        messages: admin.firestore.FieldValue.arrayUnion(systemMessage),
-      });
-
       const roomName = `chat:${chatId}`;
       if (io) {
         io.to(roomName).emit("new-message", {
           chatId: chatId,
           message: systemMessage,
+        });
+
+        io.to(`user:${newMemberId}`).emit("update-sidebar", {
+          chatId,
+          lastMessage: "Bạn đã được thêm vào nhóm",
+          updatedAt: Date.now(),
+          lastSenderId: requesterId,
+          isSeen: false,
+          isGroup: true,
+          groupName: chatData.groupName,
+          groupPhoto: chatData.groupPhoto,
+        });
+
+        chatData.members.forEach((oldMemberId) => {
+          io.to(`user:${oldMemberId}`).emit("update-sidebar", {
+            chatId,
+            lastMessage: systemText,
+            updatedAt: Date.now(),
+            lastSenderId: requesterId,
+            isSeen: oldMemberId === requesterId,
+            isGroup: true,
+            groupName: chatData.groupName,
+            groupPhoto: chatData.groupPhoto,
+          });
         });
       }
 
@@ -209,11 +259,21 @@ module.exports.removeMember = async (req, res) => {
     const { chatId, memberId } = req.body;
     const requesterId = req.user.uid;
     const io = req.app.get("socketio");
+
     const chatRef = db.collection("chats").doc(chatId);
+    const memberRef = db.collection("users").doc(memberId);
+    const userChatsRef = db.collection("userchats").doc(memberId);
+
+    const systemMessageRef = chatRef.collection("messages").doc();
+    const systemMsgId = systemMessageRef.id;
+
     let remainingMembers = [];
 
     await db.runTransaction(async (t) => {
       const chatDoc = await t.get(chatRef);
+      const userChatsDoc = await t.get(userChatsRef);
+      const memberDoc = await t.get(memberRef);
+
       if (!chatDoc.exists) throw new Error("Nhóm không tồn tại");
 
       const chatData = chatDoc.data();
@@ -227,51 +287,86 @@ module.exports.removeMember = async (req, res) => {
       if (!chatData.members.includes(memberId)) {
         throw new Error("Người này không còn trong nhóm.");
       }
-      const userChatsRef = db.collection("userchats").doc(memberId);
-      const userChatsDoc = await t.get(userChatsRef);
 
+      const memberName = memberDoc.exists
+        ? memberDoc.data().displayName || "Thành viên"
+        : "Thành viên";
+
+      const isSelf = requesterId === memberId;
+      let systemText = "";
+      if (isSelf) {
+        systemText = `đã rời khỏi nhóm.`;
+      } else {
+        systemText = `đã mời ${memberName} ra khỏi nhóm.`;
+      }
+
+      remainingMembers = chatData.members.filter((uid) => uid !== memberId);
       t.update(chatRef, {
-        members: admin.firestore.FieldValue.arrayRemove(memberId),
+        members: FieldValue.arrayRemove(memberId),
+        lastMessage: systemText,
+        updatedAt: FieldValue.serverTimestamp(),
+        lastSenderId: requesterId,
       });
 
       if (userChatsDoc.exists) {
         const userChatsData = userChatsDoc.data();
         const currentChats = userChatsData.chats || [];
         const updatedChats = currentChats.filter((c) => c.chatId !== chatId);
-
         t.update(userChatsRef, { chats: updatedChats });
       }
 
-      const isSelf = requesterId === memberId;
-      let systemText = "";
-
-      if (isSelf) {
-        systemText = "đã rời khỏi nhóm.";
-      } else {
-        systemText = "đã mời một thành viên ra khỏi nhóm.";
-      }
-      remainingMembers = chatData.members.filter((uid) => uid !== memberId);
-
       const systemMessage = {
-        id: admin.firestore().collection("_").doc().id,
+        id: systemMsgId,
         text: systemText,
         senderId: requesterId,
         createdAt: new Date(),
         type: "system",
         isSystem: true,
-        viewedBy: chatData.members.filter((uid) => uid !== memberId),
+        viewedBy: remainingMembers,
       };
 
-      t.update(chatRef, {
-        messages: admin.firestore.FieldValue.arrayUnion(systemMessage),
+      t.set(systemMessageRef, {
+        ...systemMessage,
+        createdAt: FieldValue.serverTimestamp(),
       });
 
-      if (io && systemMessage) {
-        io.to(`chat:${chatId}`).emit("new-message", {
+      if (io) {
+        const roomName = `chat:${chatId}`;
+        io.to(roomName).emit("new-message", {
           chatId: chatId,
           message: systemMessage,
         });
+
+        if (!isSelf) {
+          io.to(`user:${memberId}`).emit("kicked-from-group", {
+            chatId,
+            groupName: chatData.groupName,
+          });
+        } else {
+          io.to(`user:${memberId}`).emit("chat-removed", {
+            chatId,
+          });
+        }
+
+        const sidebarData = {
+          chatId,
+          lastMessage: systemText,
+          updatedAt: Date.now(),
+          lastSenderId: requesterId,
+          isSeen: false,
+          isGroup: true,
+          groupName: chatData.groupName,
+          groupPhoto: chatData.groupPhoto,
+        };
+
+        remainingMembers.forEach((uid) => {
+          io.to(`user:${uid}`).emit("update-sidebar", {
+            ...sidebarData,
+            isSeen: uid === requesterId,
+          });
+        });
       }
+
       if (remainingMembers.length > 0) {
         updateLastMessageBackground(chatId, systemText, requesterId).catch(
           (err) => console.error("Lỗi update lastMessage removeMember:", err)

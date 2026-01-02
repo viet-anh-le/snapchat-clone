@@ -25,7 +25,7 @@ class ChatService {
     });
   }
 
-  async reactToMessage(chatId, messageId, reaction) {
+  async reactToMessage(chatId, messageId, reaction, userDisplayName) {
     const user = auth.currentUser;
     if (!user) {
       throw new Error("User not authenticated");
@@ -35,6 +35,7 @@ class ChatService {
       chatId,
       messageId,
       reaction,
+      userDisplayName,
     });
   }
 

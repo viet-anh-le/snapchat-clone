@@ -41,21 +41,10 @@ export default function ChatInput({
     const file = e.target.files[0];
     if (!file) return;
 
-    try {
-      const imageId = uuidv4();
-      const storageRef = ref(storage, `snaps/${imageId}`);
+    onSendImageSuccess(file);
 
-      await uploadBytes(storageRef, file);
-
-      const downloadURL = await getDownloadURL(storageRef);
-
-      onSendImageSuccess(downloadURL);
-    } catch (error) {
-      console.error("Lỗi upload file:", error);
-    } finally {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = null;
-      }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = null;
     }
   };
 

@@ -5,8 +5,20 @@ import { ChatContext } from "../context/ChatContext";
 import { Avatar, Popover, Button, Image, message } from "antd";
 
 import { storage, db } from "../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import {
+  doc,
+  getDoc,
+  collection,
+  query,
+  orderBy,
+  getDocs,
+} from "firebase/firestore";
+import {
+  ref,
+  uploadString,
+  getDownloadURL,
+  uploadBytes,
+} from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import { websocketService } from "../lib/websocket";
 
@@ -19,6 +31,7 @@ import TypingIndicator from "../components/pages/chat/main/TypingIndicator";
 import CallMessage from "../components/pages/chat/main/CallMessage";
 import ChatInput from "../components/pages/chat/ChatInput";
 import MessageBubble from "../components/pages/chat/main/MessageBubble";
+import FileMessage from "../components/pages/chat/main/FileMessage";
 import { friendService } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -44,14 +57,14 @@ export default function Chat() {
   const [memberDetails, setMemberDetails] = useState({});
   const [openDeleteId, setOpenDeleteId] = useState(null);
   const [typingUsers, setTypingUsers] = useState(new Set());
-  const [isSocketReady, setIsSocketReady] = useState(false);
   const typingTimeoutRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const prevMessagesLength = useRef(0);
 
   const isBlockedByMe = user?.blocked?.includes(receiver?.uid);
-  const isBlockedByThem = receiver?.blocked?.includes(user?.uid);
+  const [isBlockedByThem, setIsBlockedByThem] = useState(false);
   const isInterrupted = isBlockedByMe || isBlockedByThem;
 
   const getChatInfo = () => {
@@ -86,17 +99,33 @@ export default function Chat() {
   };
 
   const handleSendMessage = (text) => {
+    let groupMembers = [];
+    if (chatMetadata?.type === "group" && chatMetadata?.members) {
+      groupMembers = chatMetadata.members;
+    }
     websocketService.sendMessage(
       selectedChatId,
       text,
       "text",
       null,
-      receiver?.uid
+      receiver?.uid,
+      groupMembers
     );
   };
 
   const sendSnapMessage = (url) => {
-    websocketService.sendMessage(selectedChatId, "Sent a Snap", "snap", url);
+    let groupMembers = [];
+    if (chatMetadata?.type === "group" && chatMetadata?.members) {
+      groupMembers = chatMetadata.members;
+    }
+    websocketService.sendMessage(
+      selectedChatId,
+      "Sent a Snap",
+      "snap",
+      url,
+      receiver?.uid,
+      groupMembers
+    );
   };
 
   const handleSendImageFromCamera = async (imageBase64) => {
@@ -115,14 +144,78 @@ export default function Chat() {
     }
   };
 
-  const handleSendFile = (downloadURL) => {
-    if (!selectedChatId || !downloadURL) return;
-    websocketService.sendMessage(
+  const handleSendFile = async (file) => {
+    if (!selectedChatId || !file) return;
+    let groupMembers = [];
+    if (chatMetadata?.type === "group" && chatMetadata?.members) {
+      groupMembers = chatMetadata.members;
+    }
+    const tempId = uuidv4();
+    const tempMessage = {
+      id: tempId,
+      senderId: user.uid,
+      text: file.name,
+      img: null,
+      type: "file",
+      createdAt: Date.now(),
+      isUploading: true,
+    };
+
+    setMessages((prev) => [...prev, tempMessage]);
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+
+    try {
+      const storageRef = ref(storage, `chat_files/${tempId}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      websocketService.sendMessage(
+        selectedChatId,
+        downloadURL,
+        "file",
+        downloadURL,
+        receiver?.uid,
+        groupMembers
+      );
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } catch (error) {
+      console.error("Upload error:", error);
+      messageApi.error("Upload failed");
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    }
+  };
+
+  const handleDeleteMessage = (m) => {
+    let groupMembers = [];
+    if (chatMetadata?.type === "group" && chatMetadata?.members) {
+      groupMembers = chatMetadata.members;
+    }
+    websocketService.deleteMessage(
       selectedChatId,
-      downloadURL,
-      "file",
-      downloadURL
+      m.id,
+      user?.displayName,
+      receiver?.uid,
+      groupMembers
     );
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === m.id) {
+          return {
+            ...msg,
+            text: "Tin nhắn đã được thu hồi",
+            type: "unsent",
+            img: null,
+            file: null,
+            reactions: {},
+            updatedAt: Date.now(),
+          };
+        }
+        return msg;
+      })
+    );
+    setOpenDeleteId(null);
   };
 
   const handleTyping = () => {
@@ -143,9 +236,6 @@ export default function Chat() {
         window.__markChatAsSeenOptimistic(selectedChatId);
       }
 
-      if (!websocketService.isConnected) {
-        await websocketService.connect();
-      }
       websocketService.markChatAsSeen(selectedChatId);
     }
   };
@@ -170,12 +260,25 @@ export default function Chat() {
 
         if (chatSnap.exists()) {
           const data = chatSnap.data();
-          setMessages(data.messages || []);
           setChatMetadata(data);
         } else {
-          setMessages([]);
           setChatMetadata(null);
+          setMessages([]);
+          return;
         }
+
+        const messagesRef = collection(db, "chats", selectedChatId, "messages");
+
+        const q = query(messagesRef, orderBy("createdAt", "asc"));
+
+        const querySnapshot = await getDocs(q);
+
+        const msgs = [];
+        querySnapshot.forEach((doc) => {
+          msgs.push({ id: doc.id, ...doc.data() });
+        });
+
+        setMessages(msgs);
       } catch (error) {
         console.error("Error loading chat data:", error);
       }
@@ -192,20 +295,10 @@ export default function Chat() {
           return [...prev, data.message];
         });
         setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
         }, 100);
       }
     });
-
-    const unsubscribeMessageDeleted = websocketService.onMessageDeleted(
-      (data) => {
-        if (data.chatId === currentChatId) {
-          setMessages((prev) =>
-            prev.filter((msg) => msg.id !== data.messageId)
-          );
-        }
-      }
-    );
 
     const unsubscribeSnapViewed = websocketService.onSnapViewed((data) => {
       if (data.chatId === currentChatId) {
@@ -239,10 +332,6 @@ export default function Chat() {
 
     const setupWebSocket = async () => {
       try {
-        if (!websocketService.isConnected) {
-          await websocketService.connect();
-        }
-        setIsSocketReady(true);
         websocketService.joinChat(currentChatId);
       } catch (error) {
         console.error("Failed to setup WebSocket:", error);
@@ -253,7 +342,6 @@ export default function Chat() {
 
     return () => {
       unsubscribeNewMessage();
-      if (unsubscribeMessageDeleted) unsubscribeMessageDeleted();
       unsubscribeSnapViewed();
       unsubscribeError();
       unsubscribeReaction();
@@ -272,12 +360,12 @@ export default function Chat() {
   }, [selectedChatId]);
 
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
-      }, 200);
+    if (messages.length > prevMessagesLength.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
     }
-  }, [messages.length]);
+
+    prevMessagesLength.current = messages.length;
+  }, [messages]);
 
   useEffect(() => {
     if (!chatMetadata || !selectedChatId) return;
@@ -331,7 +419,7 @@ export default function Chat() {
 
   // UseEffect typing status
   useEffect(() => {
-    if (!isSocketReady || !selectedChatId) return;
+    if (!selectedChatId) return;
     const cleanupTyping = websocketService.onTypingStatus((data) => {
       if (data.chatId !== selectedChatId) return;
       setTypingUsers((prev) => {
@@ -342,7 +430,72 @@ export default function Chat() {
       });
     });
     return () => cleanupTyping();
-  }, [selectedChatId, isSocketReady]);
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    if (receiver && user) {
+      const isBlocked = receiver.blocked?.includes(user.uid) || false;
+      setIsBlockedByThem(isBlocked);
+    }
+  }, [receiver, user]);
+
+  useEffect(() => {
+    const handleRelationshipUpdate = (data) => {
+      if (data.byUser === receiver?.uid) {
+        if (data.type === "blocked") {
+          setIsBlockedByThem(true);
+          message.error("Bạn đã bị người dùng này chặn.");
+        } else if (data.type === "unblocked") {
+          setIsBlockedByThem(false);
+          message.success("Bạn đã được bỏ chặn.");
+        }
+      }
+    };
+
+    websocketService.onRelationShipUdate(handleRelationshipUpdate);
+  }, [receiver?.uid]);
+
+  useEffect(() => {
+    const handleMessageDeleted = (data) => {
+      const { chatId, messageId, updatedMessage } = data;
+      if (chatId === selectedChatId) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === messageId) {
+              if (updatedMessage) {
+                return { ...msg, ...updatedMessage };
+              }
+              return {
+                ...msg,
+                text: "Tin nhắn đã được thu hồi",
+                type: "unsent",
+                img: null,
+                file: null,
+                reactions: {},
+              };
+            }
+            return msg;
+          })
+        );
+      }
+    };
+
+    const handleMessageUpdated = (data) => {
+      if (data.chatId === selectedChatId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === data.messageId ? { ...msg, ...data.updatedMessage } : msg
+          )
+        );
+      }
+    };
+    const unsubscribe = websocketService.onMessageDeleted(handleMessageDeleted);
+    const unsubUpdate = websocketService.onMessageUpdated(handleMessageUpdated);
+    return () => {
+      unsubscribe();
+      unsubUpdate();
+    };
+  }, [selectedChatId]);
 
   return (
     <>
@@ -401,6 +554,7 @@ export default function Chat() {
                         const isViewedByMe =
                           m.viewedBy && m.viewedBy.includes(user.uid);
                         const isCallMessage = m.type === "call";
+                        const isUnsent = m.type === "unsent";
 
                         return (
                           <div
@@ -440,42 +594,32 @@ export default function Chat() {
                                       }`
                                 }`}
                               >
-                                {m.type === "call" || m.type === "call_log" ? (
+                                {isUnsent ? (
+                                  <span className="text-gray-400 italic text-sm select-none">
+                                    Tin nhắn đã được thu hồi
+                                  </span>
+                                ) : m.type === "call" ? (
                                   <CallMessage
                                     key={m.id || i}
                                     message={m}
                                     isOwner={isOwner}
                                   />
                                 ) : m.type === "file" ? (
-                                  <a
-                                    href={m.img || m.text}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    download
-                                    className="flex items-center gap-2 px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-                                  >
-                                    <span className="text-sm font-semibold truncate max-w-[200px]">
-                                      {(m.img || m.text || "")
-                                        .split("/")
-                                        .pop() || "File"}
-                                    </span>
-                                    <span className="text-xs text-blue-600 underline">
-                                      Download
-                                    </span>
-                                  </a>
-                                ) : m.type === "snap" ? (
+                                  <FileMessage
+                                    url={m.img || m.text}
+                                    isOwner={isOwner}
+                                    isUploading={m.isUploading}
+                                  />
+                                ) : m.type === "snap" ||
+                                  m.type === "expired" ? (
                                   <div className="flex flex-col gap-1">
-                                    {isViewedByMe ? (
-                                      <div
-                                        className={`flex items-center gap-2 px-3 py-2 rounded border ${
-                                          isOwner
-                                            ? "border-blue-500/30 bg-blue-900/20"
-                                            : "border-gray-600 bg-gray-800"
-                                        }`}
-                                      >
-                                        <span className="text-lg">🔥</span>
-                                        <span className="text-gray-400 text-sm italic">
-                                          {isOwner ? "Opened" : "Expired"}
+                                    {m.type === "expired" || !m.img ? (
+                                      <div className="flex items-center gap-2 px-3 py-2 rounded border border-gray-700 bg-gray-800/60">
+                                        <span className="text-lg grayscale">
+                                          ⌛
+                                        </span>
+                                        <span className="text-gray-500 text-sm italic">
+                                          Expired
                                         </span>
                                       </div>
                                     ) : (
@@ -493,13 +637,28 @@ export default function Chat() {
                                             </div>
                                           </div>
                                         ) : (
-                                          <div
-                                            onClick={() => handleOpenSnap(m)}
-                                            className="cursor-pointer font-bold py-2 px-4 rounded transition-all flex items-center gap-2 shadow-lg bg-linear-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white animate-pulse"
-                                          >
-                                            <span>📸</span>
-                                            <span>Tap to View Snap</span>
-                                          </div>
+                                          <>
+                                            {isViewedByMe ? (
+                                              <div className="flex items-center gap-2 px-3 py-2 rounded border border-gray-600 bg-gray-800">
+                                                <span className="text-lg">
+                                                  🔥
+                                                </span>
+                                                <span className="text-gray-400 text-sm italic">
+                                                  Opened
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              <div
+                                                onClick={() =>
+                                                  handleOpenSnap(m)
+                                                }
+                                                className="cursor-pointer font-bold py-2 px-4 rounded transition-all flex items-center gap-2 shadow-lg bg-linear-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white animate-pulse"
+                                              >
+                                                <span>📸</span>
+                                                <span>Tap to View Snap</span>
+                                              </div>
+                                            )}
+                                          </>
                                         )}
                                       </>
                                     )}
@@ -519,22 +678,16 @@ export default function Chat() {
                             </div>
 
                             {/* NÚT XÓA */}
-                            {isOwner && m.id && (
+                            {isOwner && m.id && !isUnsent && (
                               <Popover
                                 content={
                                   <Button
                                     type="text"
                                     danger
                                     size="small"
-                                    onClick={() => {
-                                      websocketService.deleteMessage(
-                                        selectedChatId,
-                                        m.id
-                                      );
-                                      setOpenDeleteId(null);
-                                    }}
+                                    onClick={() => handleDeleteMessage(m)}
                                   >
-                                    Xóa
+                                    Thu hồi
                                   </Button>
                                 }
                                 trigger="click"

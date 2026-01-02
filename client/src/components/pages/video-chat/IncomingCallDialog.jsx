@@ -19,10 +19,6 @@ const IncomingCallDialog = () => {
 
     const setupIncomingCall = async () => {
       try {
-        if (!websocketService.isConnected) {
-          await websocketService.connect();
-        } else {
-        }
         const unsubscribeIncomingCall = websocketService.onIncomingCall(
           (data) => {
             setCallData({

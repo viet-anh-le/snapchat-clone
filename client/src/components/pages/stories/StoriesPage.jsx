@@ -6,7 +6,7 @@ import StoryCreator from "./StoryCreator";
 import { Icons } from "../../layouts/constants";
 import { Link } from "react-router-dom";
 
-// Import UI Components từ file bên ngoài như cấu trúc cũ
+// Import UI Components (Giữ nguyên cấu trúc file của bạn)
 import {
   StoryCircle,
   TrendingCard,
@@ -17,8 +17,9 @@ import {
 
 export default function StoriesPage() {
   const { user, loginWithGoogle } = useAuth();
-  const { myStories, friendsStories, popularStories, loading, viewStory } =
-    useStoryData(user);
+  
+  // Hook này đã tự động lọc stories theo quyền riêng tư (Public/Friends)
+  const { myStories, friendsStories, popularStories, loading, viewStory } = useStoryData(user);
 
   const [isCreatorOpen, setIsCreatorOpen] = useState(false);
   const [viewerState, setViewerState] = useState({
@@ -27,6 +28,7 @@ export default function StoriesPage() {
     index: 0,
   });
 
+  // --- THEME LOGIC ---
   const [theme, setTheme] = useState(() =>
     typeof window !== "undefined"
       ? localStorage.getItem("theme") || "light"
@@ -49,28 +51,30 @@ export default function StoriesPage() {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
-  // --- LOGIC GOM NHÓM: Group friends' stories by username ---
+  // --- LOGIC GOM NHÓM: Gom stories của bạn bè theo UID ---
+  // Input: Mảng phẳng gồm nhiều story hỗn độn
+  // Output: Mảng các User, mỗi User có một playlist story riêng
   const uniqueFriends = useMemo(() => {
     if (!friendsStories) return [];
 
     const groups = {};
     friendsStories.forEach((story) => {
-      // Dùng username làm key để gom nhóm
-      if (!groups[story.username]) {
-        groups[story.username] = {
+      // Dùng UID làm key để đảm bảo duy nhất
+      if (!groups[story.uid]) {
+        groups[story.uid] = {
+          uid: story.uid,
           username: story.username,
           avatar: story.avatar,
-          playlist: [], // Tạo playlist riêng cho user này
+          playlist: [],
         };
       }
-      // Đẩy story vào playlist của user đó
-      groups[story.username].playlist.push(story);
+      groups[story.uid].playlist.push(story);
     });
 
     return Object.values(groups);
   }, [friendsStories]);
-  // ------------------------------------------------
 
+  // --- HANDLERS ---
   const handleCreate = async () => {
     if (!user) await loginWithGoogle();
     else setIsCreatorOpen(true);
@@ -82,6 +86,7 @@ export default function StoriesPage() {
 
   return (
     <div className="min-h-screen dark:bg-gray-950 bg-[#FAFAFA] pb-20 font-sans selection:bg-purple-100">
+      
       {/* 1. Header */}
       <div className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 shadow-sm transition-all">
         <div className="container mx-auto max-w-6xl px-4 py-3 flex justify-between items-center">
@@ -90,7 +95,6 @@ export default function StoriesPage() {
               <div className="inline-block px-4 py-2 mx-2 rounded-md hover:bg-[#fffc00] transition-colors group">
                 <Icons.Logo className="w-8 h-8 text-black group-hover:text-black dark:text-white dark:group-hover:text-black" />
               </div>
-              {/* Ẩn tên app trên mobile để đỡ chật, hiện trên tablet/desktop */}
               <span className="hidden md:block text-xl font-bold bg-clip-text text-transparent bg-linear-to-r from-yellow-500 to-pink-600"></span>
             </Link>
 
@@ -107,29 +111,23 @@ export default function StoriesPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* --- BUTTON DARK MODE (Mới thêm) --- */}
+            {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
               className="p-2.5 rounded-full text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
               aria-label="Toggle Theme"
             >
-              {theme === "dark" ? (
-                <Sun size={20} className="text-yellow-400" />
-              ) : (
-                <Moon size={20} />
-              )}
+              {theme === "dark" ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} />}
             </button>
 
+            {/* Create Button */}
             <button
               onClick={handleCreate}
               className="group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-full bg-slate-900 dark:bg-white px-5 py-2 font-medium text-white dark:text-slate-900 shadow-lg transition-all duration-300 hover:bg-slate-800 dark:hover:bg-gray-200 hover:scale-105 hover:shadow-blue-500/25"
             >
               {user ? (
                 <>
-                  <Plus
-                    size={16}
-                    className="transition-transform group-hover:rotate-90"
-                  />
+                  <Plus size={16} className="transition-transform group-hover:rotate-90" />
                   <span className="text-sm">Create</span>
                 </>
               ) : (
@@ -145,13 +143,11 @@ export default function StoriesPage() {
       </div>
 
       <div className="container mx-auto max-w-6xl px-4 space-y-8 pt-6">
-        {/* 2. Stories Rail (My Story + Friends Grouped) */}
+        {/* 2. Stories Rail */}
         <section>
           <div className="flex gap-4 overflow-x-auto pb-6 pt-2 scrollbar-hide px-1">
             {loading ? (
-              Array(6)
-                .fill(0)
-                .map((_, i) => <StorySkeleton key={i} />)
+              Array(6).fill(0).map((_, i) => <StorySkeleton key={i} />)
             ) : (
               <>
                 {/* A. My Story */}
@@ -172,12 +168,12 @@ export default function StoriesPage() {
                 {/* B. Friends Stories (Grouped) */}
                 {uniqueFriends.map((friendGroup) => (
                   <StoryCircle
-                    key={friendGroup.username}
+                    key={friendGroup.uid}
                     isUser={false}
                     username={friendGroup.username}
                     userPhoto={friendGroup.avatar}
                     storyCount={friendGroup.playlist.length}
-                    // Quan trọng: Truyền playlist riêng của friend đó vào viewer
+                    // Mở viewer với playlist riêng của người bạn đó
                     onClick={() => openViewer(friendGroup.playlist, 0)}
                   />
                 ))}
@@ -210,9 +206,7 @@ export default function StoriesPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-6">
             {loading
-              ? Array(8)
-                  .fill(0)
-                  .map((_, i) => <CardSkeleton key={i} />)
+              ? Array(8).fill(0).map((_, i) => <CardSkeleton key={i} />)
               : popularStories.map((story, index) => (
                   <TrendingCard
                     key={story.id}
@@ -220,18 +214,25 @@ export default function StoriesPage() {
                     onClick={() => openViewer(popularStories, index)}
                   />
                 ))}
+            
+            {!loading && popularStories.length === 0 && (
+                <div className="col-span-full text-center py-10 text-gray-500">
+                    No trending stories available right now.
+                </div>
+            )}
           </div>
         </section>
       </div>
 
       {/* 4. Creator Modal */}
+      {/* QUAN TRỌNG: Không bọc div ngoài. 
+          StoryCreator tự xử lý fixed position z-index 60.
+      */}
       {isCreatorOpen && user && (
-        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <StoryCreator
-            currentUser={user}
-            onClose={() => setIsCreatorOpen(false)}
-          />
-        </div>
+        <StoryCreator
+          currentUser={user}
+          onClose={() => setIsCreatorOpen(false)}
+        />
       )}
 
       {/* 5. Viewer Modal */}

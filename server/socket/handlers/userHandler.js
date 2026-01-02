@@ -1,6 +1,6 @@
 const { db } = require("../../functions/src/config/firebase");
 
-module.exports = (io, socket, userSockets, activeRooms) => {
+module.exports = (io, socket, userSockets, activeRooms, onlineUsers) => {
   const userId = socket.userId;
   // User bắt đầu gõ
   socket.on("typing", (data) => {
@@ -22,6 +22,7 @@ module.exports = (io, socket, userSockets, activeRooms) => {
 
   // Disconnect handler
   socket.on("disconnect", async () => {
+    onlineUsers.delete(userId);
     // Remove from user sockets
     if (userSockets.has(userId)) {
       userSockets.get(userId).delete(socket.id);

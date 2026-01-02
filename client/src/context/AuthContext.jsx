@@ -65,12 +65,17 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return;
     }
+    let unsubscribeFirestore = null;
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      // setUser(currentUser);
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const userRef = doc(db, "users", currentUser.uid);
-        const unsubscribeFirestore = onSnapshot(userRef, (docSnap) => {
+
+        if (unsubscribeFirestore) {
+          unsubscribeFirestore();
+        }
+
+        unsubscribeFirestore = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
             setUser({
               ...currentUser,
@@ -81,13 +86,20 @@ export function AuthProvider({ children }) {
           }
           setLoading(false);
         });
-        return () => {
+      } else {
+        if (unsubscribeFirestore) {
           unsubscribeFirestore();
-        };
+          unsubscribeFirestore = null;
+        }
+        setUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      if (unsubscribeFirestore) unsubscribeFirestore();
+      unsubscribeAuth();
+    };
   }, []);
 
   // Đăng nhập bằng Google
@@ -102,12 +114,12 @@ export function AuthProvider({ children }) {
   };
 
   // Đăng ký bằng email
-  const signupWithEmail = async (email, password) => {
+  const signupWithEmail = async (email, password, displayName) => {
     if (!auth) {
       throw new Error("Firebase is not configured");
     }
     const result = await createUserWithEmailAndPassword(auth, email, password);
-    await syncUserData(result.user);
+    await syncUserData({ ...result.user, displayName });
     setUser(result.user);
     return result.user;
   };

@@ -52,3 +52,9 @@ export const removeParticipant = (userId) => {
     },
   };
 };
+
+export const clearParticipants = () => {
+  return {
+    type: "CLEAR_PARTICIPANTS",
+  };
+};

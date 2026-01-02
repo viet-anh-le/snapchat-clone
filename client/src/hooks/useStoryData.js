@@ -20,7 +20,19 @@ export function useStoryData(user) {
   const [popularStories, setPopularStories] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Helper: Generate/Get Viewer ID
+  // --- HELPER: Kiểm tra quyền xem (Privacy) ---
+  const canViewStory = (story, currentUser) => {
+    if (currentUser && story.uid === currentUser.uid) return true; // Của mình
+    if (story.privacy === "public") return true; // Public
+    if (!currentUser) return false; // Chưa đăng nhập
+    if (story.privacy === "friends") {
+       // Check whitelist
+       return Array.isArray(story.authorizedViewers) && story.authorizedViewers.includes(currentUser.uid);
+    }
+    return false;
+  };
+
+  // --- HELPER: Lấy Guest ID (để tính view nếu chưa login) ---
   const getViewerId = () => {
     if (user?.uid) return user.uid;
     let guestId = localStorage.getItem("guest_viewer_id");
@@ -31,16 +43,18 @@ export function useStoryData(user) {
     return guestId;
   };
 
-  // Helper: Increase View Count
+  // --- ACTION: Tăng view ---
   const viewStory = async (story) => {
     try {
       if (!story?.id) return;
       const viewerId = getViewerId();
+      // Kiểm tra xem viewerId này đã xem story chưa (trong subcollection views)
       const viewRef = doc(db, "stories", story.id, "views", viewerId);
       const viewSnap = await getDoc(viewRef);
 
       if (!viewSnap.exists()) {
         await setDoc(viewRef, { viewedAt: new Date() });
+        // Chỉ tăng biến views tổng nếu chưa xem
         await updateDoc(doc(db, "stories", story.id), {
           views: increment(1),
         });
@@ -51,39 +65,62 @@ export function useStoryData(user) {
   };
 
   useEffect(() => {
+    setLoading(true);
     const storiesRef = collection(db, "stories");
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24h qua
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);   // 3 ngày qua cho Trending
 
-    // 1. Fetch Recent
+    // --- QUERY 1: RECENT STORIES (Dùng cho My Story & Friends) ---
+    // Lấy theo thời gian mới nhất
     const recentQuery = query(
       storiesRef,
       where("timestamp", ">=", twentyFourHoursAgo),
       orderBy("timestamp", "desc")
     );
+
     const unsubRecent = onSnapshot(recentQuery, (snapshot) => {
-      const allStories = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const allRecent = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      // Lọc danh sách được phép xem
+      const visibleRecent = allRecent.filter(s => canViewStory(s, user));
 
       if (user) {
-        const friends = user.friends || [];
-        setMyStories(allStories.filter((s) => s.uid === user.uid));
-        setFriendsStories(allStories.filter((s) => friends.includes(s.uid)));
+        setMyStories(visibleRecent.filter((s) => s.uid === user.uid));
+        setFriendsStories(visibleRecent.filter((s) => s.uid !== user.uid));
       } else {
         setMyStories([]);
         setFriendsStories([]);
       }
+      // Đã load xong phần quan trọng nhất
       setLoading(false);
     });
 
-    // 2. Fetch Trending
-    const trendingQuery = query(
+    // --- QUERY 2: TRENDING STORIES (Dùng cho Popular) ---
+    // Lấy theo Views cao nhất (Sort by views desc)
+    // Lưu ý: Trending có thể lấy xa hơn 24h (ví dụ 3 ngày) để danh sách phong phú hơn
+   const trendingQuery = query(
       storiesRef,
-      where("timestamp", ">=", oneWeekAgo),
+      where("timestamp", ">=", threeDaysAgo),
       orderBy("views", "desc"),
-      limit(12)
+      limit(20)
     );
+
     const unsubTrending = onSnapshot(trendingQuery, (snapshot) => {
-      setPopularStories(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const allTrending = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      const validTrending = allTrending.filter(s => {
+        // 1. FIX DATA CŨ: Nếu không có field privacy -> Coi như Public
+        const isPublic = s.privacy === "public" || !s.privacy;
+        
+        // 2. DEBUG MODE: Tạm thời cho phép hiện story của chính mình để test
+        // Khi nào ra production thì bỏ comment dòng dưới để ẩn đi
+        // const isNotMe = !user || s.uid !== user.uid; 
+        
+        return isPublic; // && isNotMe; <--- Uncomment cái này sau khi test xong
+      });
+
+      console.log("Trending Raw:", allTrending.length, "| Valid:", validTrending.length); // Log để check
+      setPopularStories(validTrending);
     });
 
     return () => {

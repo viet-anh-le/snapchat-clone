@@ -6,24 +6,44 @@ class WebSocketService {
     this.socket = null;
     this.isConnected = false;
     this.listeners = new Map();
+    this.isConnecting = false;
   }
 
-  connect() {
+  async connect() {
+    if (this.isConnecting) return Promise.resolve();
+
     if (this.socket?.connected) {
       return Promise.resolve();
     }
 
-    // If socket exists but not connected, disconnect it first
+    this.isConnecting = true;
+
     if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
+      this.socket.connect();
+      return new Promise((resolve, reject) => {
+        const onConnect = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = (err) => {
+          cleanup();
+          this.isConnecting = false;
+          reject(err);
+        };
+        const cleanup = () => {
+          this.socket.off("connect", onConnect);
+          this.socket.off("connect_error", onError);
+        };
+        this.socket.once("connect", onConnect);
+        this.socket.once("connect_error", onError);
+      });
     }
 
     return new Promise(async (resolve, reject) => {
       try {
         const user = auth.currentUser;
         if (!user) {
-          reject(new Error("User not authenticated"));
+          this.isConnecting = false;
           return;
         }
 
@@ -32,67 +52,118 @@ class WebSocketService {
           import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 
         this.socket = io(serverUrl, {
-          auth: {
-            token: token,
-          },
+          auth: { token },
           transports: ["websocket", "polling"],
+          reconnection: true,
+          reconnectionAttempts: 5,
         });
 
+        if (this.authUnsubscribe) {
+          this.authUnsubscribe();
+          this.authUnsubscribe = null;
+        }
+
+        if (!this.authUnsubscribe) {
+          this.authUnsubscribe = auth.onAuthStateChanged(async (u) => {
+            if (u && this.socket) {
+              try {
+                const newToken = await u.getIdToken();
+                if (this.socket.auth && this.socket.auth.token === newToken) {
+                  return;
+                }
+                console.log("Token changed, updating socket auth...");
+                this.socket.auth.token = newToken;
+              } catch (e) {
+                console.error("Token refresh error", e);
+              }
+            }
+          });
+        }
+
         this.socket.on("connect", () => {
+          console.log("Socket Connected ID:", this.socket.id);
           this.isConnected = true;
+          this.isConnecting = false;
           resolve();
         });
 
-        this.socket.on("disconnect", () => {
+        this.socket.on("disconnect", (reason) => {
+          console.log("Socket Disconnected:", reason);
           this.isConnected = false;
         });
 
         this.socket.on("connect_error", (error) => {
-          console.error("WebSocket connection error:", error);
+          console.error("Socket Connection Error:", error.message);
+          this.isConnecting = false;
           reject(error);
         });
-
-        // Re-authenticate on token refresh
-        auth.onAuthStateChanged(async (user) => {
-          if (user && this.socket) {
-            const newToken = await user.getIdToken();
-            this.socket.auth.token = newToken;
-            this.socket.disconnect().connect();
-          }
-        });
       } catch (error) {
-        console.error("Error connecting WebSocket:", error);
+        console.error("Error setup WebSocket:", error);
+        this.isConnecting = false;
         reject(error);
       }
     });
   }
 
   disconnect() {
+    if (this.authUnsubscribe) {
+      this.authUnsubscribe();
+      this.authUnsubscribe = null;
+    }
+
     if (this.socket) {
       this.socket.disconnect();
+      if (this.socket.auth) this.socket.auth.token = null;
       this.socket = null;
       this.isConnected = false;
+      this.isConnecting = false;
+      console.log("[WebSocket] Disconnected completely.");
     }
   }
+  _waitForConnection(callback) {
+    if (this.socket?.connected) {
+      callback();
+      return;
+    }
+    if (this.socket) {
+      const onConnect = () => {
+        cleanup();
+        callback();
+      };
 
+      const onError = (err) => {
+        cleanup();
+      };
+
+      const cleanup = () => {
+        this.socket.off("connect", onConnect);
+        this.socket.off("connect_error", onError);
+      };
+
+      this.socket.once("connect", onConnect);
+      this.socket.once("connect_error", onError);
+      return;
+    }
+
+    const checkInterval = setInterval(() => {
+      if (this.socket) {
+        clearInterval(checkInterval);
+        this._waitForConnection(callback);
+      }
+    }, 100);
+
+    setTimeout(() => {
+      if (!this.socket) {
+        clearInterval(checkInterval);
+      }
+    }, 5000);
+  }
   // ========== CHAT METHODS ==========
 
   joinChat(chatId) {
-    if (!this.socket) {
-      console.warn("Socket not initialized, cannot join chat");
-      return;
-    }
-    if (!this.socket.connected) {
-      console.warn(
-        "Socket not connected, cannot join chat. Will retry when connected."
-      );
-      // Retry when socket connects
-      this.socket.once("connect", () => {
-        this.socket.emit("join-chat", chatId);
-      });
-      return;
-    }
-    this.socket.emit("join-chat", chatId);
+    this._waitForConnection(() => {
+      this.socket.emit("join-chat", chatId);
+    });
   }
 
   leaveChat(chatId) {
@@ -100,101 +171,155 @@ class WebSocketService {
     this.socket.emit("leave-chat", chatId);
   }
 
-  sendMessage(chatId, text, type = "text", img = null, receiverId) {
-    if (!this.socket?.connected) {
-      console.warn("Socket not connected, cannot send message");
-      return;
-    }
-    this.socket.emit("send-message", { chatId, text, type, img, receiverId });
+  sendMessage(
+    chatId,
+    text,
+    type = "text",
+    img = null,
+    receiverId,
+    members = []
+  ) {
+    this._waitForConnection(() => {
+      this.socket.emit("send-message", {
+        chatId,
+        text,
+        type,
+        img,
+        receiverId,
+        members,
+      });
+    });
   }
 
   viewSnap(chatId, messageId) {
-    if (!this.socket?.connected) return;
-    this.socket.emit("view-snap", { chatId, messageId });
+    this._waitForConnection(() => {
+      this.socket.emit("view-snap", { chatId, messageId });
+    });
   }
 
   markChatAsSeen(chatId) {
-    if (!this.socket?.connected) {
-      console.warn("Socket not connected, cannot mark chat as seen");
-      return;
-    }
-    this.socket.emit("mark-chat-seen", { chatId });
+    this._waitForConnection(() => {
+      this.socket.emit("mark-chat-seen", { chatId });
+    });
   }
 
-  deleteMessage(chatId, messageId) {
-    if (!this.socket?.connected) {
-      console.warn("Socket not connected, cannot delete message");
-      return;
-    }
-    this.socket.emit("delete-message", { chatId, messageId });
+  deleteMessage(chatId, messageId, userDisplayName, receiverId, members = []) {
+    this._waitForConnection(() => {
+      this.socket.emit("delete-message", {
+        chatId,
+        messageId,
+        userDisplayName,
+        receiverId,
+        members,
+      });
+    });
+  }
+
+  onMessageDeleted(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("message-deleted", handler);
+    });
+    return () => this.socket?.off("message-deleted", handler);
   }
 
   onNewMessage(callback) {
-    // Set up listener immediately if socket exists and is connected
-    if (this.socket && this.socket.connected) {
-      this.socket.on("new-message", callback);
-      return () => {
-        this.socket.off("new-message", callback);
-      };
-    }
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("new-message", handler);
+    });
+    return () => this.socket?.off("new-message", handler);
+  }
 
-    // If socket not ready, set up when it connects
-    const setupListener = () => {
-      if (this.socket) {
-        this.socket.on("new-message", callback);
-      }
-    };
+  onUpdateSidebar(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("update-sidebar", handler);
+    });
+    return () => this.socket?.off("update-sidebar", handler);
+  }
+  onUserStatus(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("user-status", handler);
+    });
 
-    // Try to set up immediately if socket exists
-    if (this.socket) {
-      // Socket exists but not connected, wait for connect
-      this.socket.once("connect", setupListener);
-    } else {
-      // Wait for socket to be created
-      const checkSocket = setInterval(() => {
-        if (this.socket) {
-          if (this.socket.connected) {
-            setupListener();
-          } else {
-            this.socket.once("connect", setupListener);
-          }
-          clearInterval(checkSocket);
-        }
-      }, 100);
+    return () => this.socket?.off("user-status", handler);
+  }
 
-      // Cleanup after 10 seconds
-      setTimeout(() => clearInterval(checkSocket), 10000);
-    }
+  requestOnlineUsers() {
+    this._waitForConnection(() => {
+      this.socket.emit("req-online-users");
+    });
+  }
 
-    return () => {
-      if (this.socket) {
-        this.socket.off("new-message", callback);
-      }
-    };
+  onGetOnlineUsers(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("get-users", handler);
+    });
+    return () => this.socket?.off("get-users", handler);
   }
 
   onSnapViewed(callback) {
     if (!this.socket) return () => {};
-    this.socket.on("snap-viewed", callback);
-    return () => this.socket.off("snap-viewed", callback);
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("snap-viewed", handler);
+    });
+    return () => this.socket.off("snap-viewed", handler);
   }
 
-  onMessageDeleted(callback) {
-    if (!this.socket) return () => {};
-    this.socket.on("message-deleted", callback);
-    return () => this.socket.off("message-deleted", callback);
+  onMessageUpdated(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket?.on("message-updated", handler);
+    });
+    return () => this.socket?.off("message-updated", handler);
   }
 
   onJoinedChat(callback) {
     if (!this.socket) return () => {};
-    this.socket.on("joined-chat", callback);
-    return () => this.socket.off("joined-chat", callback);
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("joined-chat", handler);
+    });
+    return () => this.socket.off("joined-chat", handler);
   }
 
   onError(callback) {
     if (!this.socket) return () => {};
     this.socket.on("error", callback);
     return () => this.socket.off("error", callback);
+  }
+
+  // ========= Archived Message ==========
+  archiveChat(chatId) {
+    this._waitForConnection(() => {
+      this.socket.emit("archive-chat", { chatId });
+    });
+  }
+
+  unarchiveChat(chatId) {
+    this._waitForConnection(() => {
+      this.socket.emit("unarchive-chat", { chatId });
+    });
+  }
+
+  onChatArchived(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("chat-archived-success", handler);
+    });
+    return () => this.socket?.off("chat-archived-success", handler);
+  }
+
+  onChatUnarchived(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("chat-unarchived-success", handler);
+    });
+    return () => this.socket?.off("chat-unarchived-success", handler);
   }
 
   // ========== Typing ================
@@ -228,26 +353,47 @@ class WebSocketService {
     };
   }
 
+  // ========== Group ===============
+  onChatRemoved(callback) {
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("kicked-from-group", handler);
+      this.socket.on("chat-removed", handler);
+    });
+    return () => {
+      this.socket?.off("kicked-from-group", handler);
+      this.socket?.off("chat-removed", handler);
+    };
+  }
+
   // ========== React ===============
-  sendReactionUpdate(chatId, messageId, updatedReactions) {
-    if (this.socket) {
+  sendReactionUpdate(chatId, messageId, reactionData) {
+    this._waitForConnection(() => {
       this.socket.emit("send-reaction-update", {
         chatId,
         messageId,
-        updatedReactions,
+        ...reactionData,
       });
-    }
+    });
   }
 
   onReactionUpdated(callback) {
-    if (this.socket) {
-      this.socket.on("receive-reaction-update", callback);
-    }
-    return () => {
-      if (this.socket) {
-        this.socket.off("receive-reaction-update", callback);
-      }
-    };
+    if (!this.socket) return () => {};
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("receive-reaction-update", handler);
+    });
+    return () => this.socket.off("receive-reaction-update", handler);
+  }
+
+  // ========== Relationship ===========
+  onRelationShipUdate(callback) {
+    if (!this.socket) return () => {};
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("relationship-updated", handler);
+    });
+    return () => this.socket.off("relationship-updated", handler);
   }
 
   // ========== WEBRTC METHODS ==========
@@ -325,37 +471,21 @@ class WebSocketService {
 
   // Listen for incoming calls
   onIncomingCall(callback) {
-    if (!this.socket) {
-      console.warn(
-        "Socket not initialized, cannot setup incoming call listener"
-      );
-      return () => {};
-    }
-
-    const handler = (data) => {
-      callback(data);
-    };
-    this.socket.on("incoming-call", handler);
-
-    return () => {
-      this.socket.off("incoming-call", handler);
-    };
+    const handler = (data) => callback(data);
+    this._waitForConnection(() => {
+      this.socket.on("incoming-call", handler);
+    });
+    return () => this.socket?.off("incoming-call", handler);
   }
 
   // Listen for caller cancellations
   onCallCancelled(callback) {
-    if (!this.socket) {
-      console.warn(
-        "Socket not initialized, cannot setup call-cancelled listener"
-      );
-      return () => {};
-    }
-
     const handler = (data) => {
       callback(data);
     };
-    this.socket.on("call-cancelled", handler);
-
+    this._waitForConnection(() => {
+      this.socket.on("call-cancelled", handler);
+    });
     return () => {
       this.socket.off("call-cancelled", handler);
     };
@@ -373,8 +503,9 @@ class WebSocketService {
     const handler = (data) => {
       callback(data);
     };
-    this.socket.on("call-declined", handler);
-
+    this._waitForConnection(() => {
+      this.socket.on("call-declined", handler);
+    });
     return () => {
       this.socket.off("call-declined", handler);
     };
@@ -399,7 +530,9 @@ class WebSocketService {
     const handler = (data) => {
       callback(data);
     };
-    this.socket.on("call-ended", handler);
+    this._waitForConnection(() => {
+      this.socket.on("call-ended", handler);
+    });
 
     return () => {
       this.socket.off("call-ended", handler);
@@ -409,8 +542,13 @@ class WebSocketService {
   // WebRTC Event Listeners
   onUserJoined(callback) {
     if (!this.socket) return () => {};
-    this.socket.on("user-joined", callback);
-    return () => this.socket.off("user-joined", callback);
+    const handler = (data) => {
+      callback(data);
+    };
+    this._waitForConnection(() => {
+      this.socket.on("user-joined", handler);
+    });
+    return () => this.socket.off("user-joined", handler);
   }
 
   onUserLeft(callback) {

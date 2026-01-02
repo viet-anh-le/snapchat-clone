@@ -1,9 +1,30 @@
 const crypto = require("crypto");
-const { db, FieldValue } = require("../../functions/src/config/firebase");
+const {
+  admin,
+  db,
+  FieldValue,
+} = require("../../functions/src/config/firebase");
+const BlockCache = require("../../cache/BlockCache");
+
+const deleteImageFromStorage = async (fileUrl) => {
+  if (!fileUrl) return;
+  try {
+    const urlObj = new URL(fileUrl);
+    const pathName = urlObj.pathname;
+    const indexOfO = pathName.indexOf("/o/");
+    if (indexOfO === -1) return;
+    const encodedPath = pathName.substring(indexOfO + 3);
+    const filePath = decodeURIComponent(encodedPath);
+
+    await admin.storage().bucket().file(filePath).delete();
+    console.log(`[Storage] Deleted snap: ${filePath}`);
+  } catch (error) {
+    console.error("[Storage] Error deleting file:", error.message);
+  }
+};
 
 module.exports = (io, socket) => {
   const userId = socket.userId;
-  // Join chat room
   socket.on("join-chat", async (chatId) => {
     try {
       // Verify user has access to this chat
@@ -17,6 +38,7 @@ module.exports = (io, socket) => {
       const chatData = chatDoc.data();
 
       if (chatData.type === "group") {
+        console.log(chatData);
         if (!chatData.members || !chatData.members.includes(userId)) {
           console.error(
             `User ${userId} not in members array:`,
@@ -46,8 +68,6 @@ module.exports = (io, socket) => {
 
       socket.join(`chat:${chatId}`);
 
-      const room = io.sockets.adapter.rooms.get(`chat:${chatId}`);
-      const socketCount = room ? room.size : 0;
       socket.emit("joined-chat", { chatId });
 
       // Mark chat as seen when user joins (opens the chat)
@@ -112,7 +132,6 @@ module.exports = (io, socket) => {
       const updatedChats = [...chats];
       const currentChat = updatedChats[chatIndex];
 
-      // Mark as seen regardless of who sent the last message (user wants to mark it as seen)
       updatedChats[chatIndex] = {
         ...currentChat,
         isSeen: true,
@@ -125,10 +144,19 @@ module.exports = (io, socket) => {
   });
 
   // Send message
-  socket.on("send-message", (data) => {
+  socket.on("send-message", async (data) => {
     try {
-      const { chatId, text, type = "text", img, receiverId } = data;
+      const { chatId, text, type = "text", img, receiverId, members } = data;
+      const senderId = socket.userId;
+      const isBlocked = await BlockCache.checkBlockedStatus(
+        senderId,
+        receiverId
+      );
 
+      if (isBlocked) {
+        socket.emit("error", { message: "Không thể gửi tin nhắn (bị chặn)." });
+        return;
+      }
       if (!chatId || !text) {
         console.error("Missing chatId or text in send-message");
         socket.emit("error", { message: "Missing chatId or text" });
@@ -136,15 +164,17 @@ module.exports = (io, socket) => {
       }
 
       const roomName = `chat:${chatId}`;
+      const messageId = crypto.randomUUID();
 
       const message = {
-        id: crypto.randomUUID(),
+        id: messageId,
         senderId: userId,
         text: type === "snap" ? "Sent a Snap" : text,
         img: img || null,
         type: type,
-        viewedBy: [],
-        createdAt: new Date(),
+        viewedBy: [senderId],
+        createdAt: Date.now(),
+        reactions: {},
       };
 
       io.to(roomName).emit("new-message", {
@@ -152,8 +182,34 @@ module.exports = (io, socket) => {
         message: message,
       });
 
+      const sidebarData = {
+        chatId,
+        lastMessage: type === "snap" ? "📷 Sent a photo" : text,
+        updatedAt: Date.now(),
+        lastSenderId: userId,
+        isSeen: false,
+        receiverId: receiverId,
+      };
+
+      io.to(`user:${userId}`).emit("update-sidebar", {
+        ...sidebarData,
+        isSeen: true,
+      });
+
+      if (members && Array.isArray(members) && members.length > 0) {
+        members.forEach((memberId) => {
+          if (memberId !== userId) {
+            io.to(`user:${memberId}`).emit("update-sidebar", {
+              ...sidebarData,
+              isGroup: true,
+            });
+          }
+        });
+      } else if (receiverId) {
+        io.to(`user:${receiverId}`).emit("update-sidebar", sidebarData);
+      }
+
       (async () => {
-        //Check block user
         if (receiverId) {
           try {
             const [senderDoc, receiverDoc] = await Promise.all([
@@ -165,12 +221,12 @@ module.exports = (io, socket) => {
             const receiverData = receiverDoc.data();
 
             if (senderData?.blockedUsers?.includes(receiverId)) {
-              socket.emit("error", { message: "Bạn đã chặn người dùng này." });
+              console.warn(`User ${userId} blocked ${receiverId}`);
               return;
             }
 
-            if (receiverData?.blockedUsers?.includes(senderId)) {
-              socket.emit("error", { message: "Không thể gửi tin nhắn." });
+            if (receiverData?.blockedUsers?.includes(userId)) {
+              console.warn(`User ${receiverId} blocked ${userId}`);
               return;
             }
           } catch (err) {
@@ -179,115 +235,84 @@ module.exports = (io, socket) => {
         }
 
         try {
-          // Verify access
-          const chatDoc = await db.collection("chats").doc(chatId).get();
+          const chatRef = db.collection("chats").doc(chatId);
+          const chatDoc = await chatRef.get();
+
           if (!chatDoc.exists) {
             socket.emit("error", { message: "Chat not found" });
             return;
           }
 
           const chatData = chatDoc.data();
-          // Check access based on chat type
           let hasAccess = false;
+          let memberIds = [];
+
           if (chatData.type === "group") {
-            // Group chat: check members array
             hasAccess = chatData.members && chatData.members.includes(userId);
-            if (!hasAccess) {
-              console.error(
-                `User ${userId} not in group members:`,
-                chatData.members
-              );
-            }
+            memberIds = chatData.members || [];
           } else {
-            // 1-1 chat: check if user has this chat in their userchats
             const userChatsRef = db.collection("userchats").doc(userId);
             const userChatsDoc = await userChatsRef.get();
             if (userChatsDoc.exists) {
               const userChats = userChatsDoc.data().chats || [];
-              hasAccess = userChats.some((chat) => chat.chatId === chatId);
+              const chatEntry = userChats.find((c) => c.chatId === chatId);
+              hasAccess = !!chatEntry;
+              if (chatEntry && chatEntry.receiverId) {
+                memberIds = [userId, chatEntry.receiverId];
+              }
             }
-            if (!hasAccess) {
-              console.error(
-                `User ${userId} doesn't have access to 1-1 chat ${chatId}`
-              );
-            }
+            if (!memberIds.length) memberIds = [userId];
           }
 
           if (!hasAccess) {
             socket.emit("error", { message: "Access denied" });
             return;
           }
-          // Get member IDs efficiently (BEFORE Firestore updates)
-          let memberIds = [];
-          if (chatData.type === "group") {
-            // Group chat: use members array (already in memory)
-            memberIds = chatData.members || [];
-          } else {
-            // 1-1 chat: get receiver from sender's userchats (only 1 query instead of all)
-            const senderUserChatsRef = db.collection("userchats").doc(userId);
-            const senderUserChatsDoc = await senderUserChatsRef.get();
 
-            if (senderUserChatsDoc.exists) {
-              const senderChats = senderUserChatsDoc.data().chats || [];
-              const chatEntry = senderChats.find(
-                (chat) => chat.chatId === chatId
-              );
-              if (chatEntry && chatEntry.receiverId) {
-                memberIds = [userId, chatEntry.receiverId];
-              } else {
-                // Fallback: just use sender for now
-                memberIds = [userId];
-              }
-            } else {
-              memberIds = [userId];
-            }
-          }
-          // Update userchats in parallel (start immediately after broadcast)
-          // Use individual updates for better performance (Firestore handles parallel writes well)
-          memberIds.forEach((memberId) => {
-            // Don't await - start all updates in parallel immediately
-            (async () => {
-              try {
-                const userChatsRef = db.collection("userchats").doc(memberId);
-                const userChatsDoc = await userChatsRef.get();
-
-                if (userChatsDoc.exists) {
-                  const userChatsData = userChatsDoc.data();
-                  const chats = userChatsData.chats || [];
-                  const chatIndex = chats.findIndex((c) => c.chatId === chatId);
-
-                  if (chatIndex !== -1) {
-                    const updatedChats = [...chats];
-                    updatedChats[chatIndex] = {
-                      ...updatedChats[chatIndex],
-                      lastMessage: type === "snap" ? "📷 Sent a photo" : text,
-                      lastSenderId: userId,
-                      isSeen: memberId === userId,
-                      updatedAt: Date.now(),
-                    };
-
-                    await userChatsRef.update({ chats: updatedChats });
-                  }
-                }
-              } catch (error) {
-                console.error(
-                  `Error updating userchats for ${memberId}:`,
-                  error
-                );
-              }
-            })();
-          });
-          // Update Firestore messages in background (non-blocking)
-          db.collection("chats")
-            .doc(chatId)
-            .update({
-              messages: FieldValue.arrayUnion(message),
-            })
-            .catch((error) => {
-              console.error("Error updating Firestore messages:", error);
+          await chatRef
+            .collection("messages")
+            .doc(messageId)
+            .set({
+              ...message,
+              createdAt: FieldValue.serverTimestamp(),
             });
+
+          await chatRef.update({
+            lastMessage: type === "snap" ? "📷 Sent a photo" : text,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastSenderId: userId,
+          });
+
+          const updatePromises = memberIds.map(async (memberId) => {
+            const userChatsRef = db.collection("userchats").doc(memberId);
+
+            try {
+              const userChatsDoc = await userChatsRef.get();
+              if (userChatsDoc.exists) {
+                const userChatsData = userChatsDoc.data();
+                const chats = userChatsData.chats || [];
+                const chatIndex = chats.findIndex((c) => c.chatId === chatId);
+
+                if (chatIndex !== -1) {
+                  const updatedChats = [...chats];
+                  updatedChats[chatIndex] = {
+                    ...updatedChats[chatIndex],
+                    lastMessage: type === "snap" ? "📷 Sent a photo" : text,
+                    lastSenderId: userId,
+                    isSeen: memberId === userId,
+                    updatedAt: Date.now(),
+                  };
+                  await userChatsRef.update({ chats: updatedChats });
+                }
+              }
+            } catch (err) {
+              console.error(`Error updating userchat for ${memberId}`, err);
+            }
+          });
+
+          await Promise.all(updatePromises);
         } catch (error) {
-          console.error("Error broadcasting message:", error);
+          console.error("Error processing message DB:", error);
         }
       })();
     } catch (error) {
@@ -297,54 +322,92 @@ module.exports = (io, socket) => {
   });
 
   socket.on("send-reaction-update", (data) => {
-    const { chatId, messageId, updatedReactions } = data;
+    const {
+      chatId,
+      messageId,
+      updatedReactions,
+      notificationText,
+      receiverId,
+      lastSenderId,
+    } = data;
     const roomName = `chat:${chatId}`;
-
     io.to(roomName).emit("receive-reaction-update", {
       chatId,
       messageId,
       updatedReactions,
     });
+    if (notificationText && receiverId) {
+      const sidebarData = {
+        chatId,
+        lastMessage: notificationText,
+        updatedAt: Date.now(),
+        lastSenderId: lastSenderId,
+        isSeen: false,
+        isReaction: true,
+      };
+      io.to(`user:${receiverId}`).emit("update-sidebar", sidebarData);
+    }
   });
 
   // Mark snap as viewed
   socket.on("view-snap", async (data) => {
     try {
       const { chatId, messageId } = data;
+      if (!chatId || !messageId) return;
 
-      const chatDoc = await db.collection("chats").doc(chatId).get();
-      if (!chatDoc.exists) {
-        socket.emit("error", { message: "Chat not found" });
-        return;
-      }
+      const chatRef = db.collection("chats").doc(chatId);
+      const messageRef = chatRef.collection("messages").doc(messageId);
 
-      const chatData = chatDoc.data();
-      const messages = chatData.messages || [];
-      const messageIndex = messages.findIndex((m) => m.id === messageId);
+      await db.runTransaction(async (t) => {
+        const chatDoc = await t.get(chatRef);
+        const messageDoc = await t.get(messageRef);
 
-      if (messageIndex === -1) {
-        socket.emit("error", { message: "Message not found" });
-        return;
-      }
+        if (!chatDoc.exists || !messageDoc.exists) return;
 
-      const message = messages[messageIndex];
-      const viewedBy = message.viewedBy || [];
+        const chatData = chatDoc.data();
+        const messageData = messageDoc.data();
+        const viewedBy = messageData.viewedBy || [];
 
-      if (!viewedBy.includes(userId)) {
-        messages[messageIndex] = {
-          ...message,
-          viewedBy: [...viewedBy, userId],
-        };
+        if (viewedBy.includes(userId)) return;
+        const newViewedBy = [...viewedBy, userId];
+        const groupMembers = chatData.members || [];
 
-        await db.collection("chats").doc(chatId).update({ messages });
+        const isEveryoneViewed = groupMembers.every((memberId) =>
+          newViewedBy.includes(memberId)
+        );
 
-        // Broadcast update
-        io.to(`chat:${chatId}`).emit("snap-viewed", {
-          chatId,
-          messageId,
-          viewedBy: messages[messageIndex].viewedBy,
-        });
-      }
+        if (isEveryoneViewed) {
+          console.log(`[Snap] Message ${messageId} viewed by all. Deleting...`);
+          deleteImageFromStorage(messageData.img);
+          t.update(messageRef, {
+            viewedBy: newViewedBy,
+            type: "expired",
+            img: null,
+            file: null,
+          });
+
+          io.to(`chat:${chatId}`).emit("message-updated", {
+            chatId,
+            messageId,
+            updatedMessage: {
+              ...messageData,
+              viewedBy: newViewedBy,
+              type: "expired",
+              img: null,
+            },
+          });
+        } else {
+          t.update(messageRef, {
+            viewedBy: newViewedBy,
+          });
+
+          io.to(`chat:${chatId}`).emit("snap-viewed", {
+            chatId,
+            messageId,
+            viewedBy: newViewedBy,
+          });
+        }
+      });
     } catch (error) {
       console.error("Error viewing snap:", error);
       socket.emit("error", { message: "Failed to mark snap as viewed" });
@@ -352,39 +415,197 @@ module.exports = (io, socket) => {
   });
 
   //Delete Message
-  socket.on("delete-message", async (data) => {
+  socket.on("delete-message", (data) => {
     try {
-      const { chatId, messageId } = data || {};
+      const userId = socket.userId;
+      const { chatId, messageId, userDisplayName, receiverId, members } =
+        data || {};
       if (!chatId || !messageId) {
         socket.emit("error", { message: "Missing chatId or messageId" });
         return;
       }
-
-      const chatDoc = await db.collection("chats").doc(chatId).get();
-      if (!chatDoc.exists) {
-        socket.emit("error", { message: "Chat not found" });
-        return;
-      }
-
-      const chatData = chatDoc.data();
-      const messages = chatData.messages || [];
-      const messageIndex = messages.findIndex((m) => m.id === messageId);
-
-      if (messageIndex === -1) {
-        socket.emit("error", { message: "Message not found" });
-        return;
-      }
-
-      messages.splice(messageIndex, 1);
-      await db.collection("chats").doc(chatId).update({ messages });
-
       io.to(`chat:${chatId}`).emit("message-deleted", {
         chatId,
         messageId,
+        updatedMessage: {
+          id: messageId,
+          text: `Tin nhắn đã được thu hồi`,
+          type: "unsent",
+          img: null,
+          reactions: {},
+          updatedAt: Date.now(),
+        },
       });
+
+      const sidebarData = {
+        chatId,
+        lastMessage: `${userDisplayName || "Ai đó"} đã thu hồi một tin nhắn`,
+        updatedAt: Date.now(),
+        lastSenderId: userId,
+        isSeen: false,
+      };
+
+      io.to(`user:${userId}`).emit("update-sidebar", {
+        ...sidebarData,
+        isSeen: true,
+      });
+
+      if (members && Array.isArray(members) && members.length > 0) {
+        members.forEach((memberId) => {
+          if (memberId !== userId) {
+            io.to(`user:${memberId}`).emit("update-sidebar", {
+              ...sidebarData,
+              isGroup: true,
+            });
+          }
+        });
+      } else if (receiverId) {
+        io.to(`user:${receiverId}`).emit("update-sidebar", sidebarData);
+      }
+
+      (async () => {
+        try {
+          const chatRef = db.collection("chats").doc(chatId);
+          const messageRef = chatRef.collection("messages").doc(messageId);
+
+          const [chatDoc, messageDoc] = await Promise.all([
+            chatRef.get(),
+            messageRef.get(),
+          ]);
+
+          if (!chatDoc.exists || !messageDoc.exists) {
+            socket.emit("error", { message: "Chat or Message not found" });
+            return;
+          }
+
+          const messageData = messageDoc.data();
+          const chatData = chatDoc.data();
+
+          if (messageData.senderId !== userId) {
+            socket.emit("error", { message: "Permission denied" });
+            return;
+          }
+
+          let memberIds = [];
+          if (chatData.type === "group") {
+            memberIds = chatData.members || [];
+          } else {
+            if (chatData.members) {
+              memberIds = chatData.members;
+            } else {
+              if (receiverId) memberIds = [userId, receiverId];
+              else memberIds = [userId];
+            }
+          }
+
+          await messageRef.update({
+            text: "Tin nhắn đã được thu hồi",
+            type: "unsent",
+            img: null,
+            file: null,
+            reactions: {},
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+
+          await chatRef.update({
+            lastMessage: `${
+              userDisplayName || "Ai đó"
+            } đã thu hồi một tin nhắn`,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastSenderId: userId,
+          });
+
+          const updatePromises = memberIds.map(async (memberId) => {
+            const isMe = memberId === userId;
+            const userChatsRef = db.collection("userchats").doc(memberId);
+            try {
+              const userChatsDoc = await userChatsRef.get();
+              if (userChatsDoc.exists) {
+                const userChatsData = userChatsDoc.data();
+                const chats = userChatsData.chats || [];
+                const chatIndex = chats.findIndex((c) => c.chatId === chatId);
+
+                if (chatIndex !== -1) {
+                  const updatedChats = [...chats];
+                  updatedChats[chatIndex] = {
+                    ...updatedChats[chatIndex],
+                    lastMessage: `${
+                      userDisplayName || "Ai đó"
+                    } đã thu hồi một tin nhắn`,
+                    lastSenderId: userId,
+                    isSeen: isMe,
+                    updatedAt: Date.now(),
+                  };
+                  await userChatsRef.update({ chats: updatedChats });
+                }
+              }
+            } catch (err) {
+              console.error(`Error updating userchat for ${memberId}`, err);
+            }
+          });
+          await Promise.all(updatePromises);
+        } catch (error) {
+          console.error("Error processing recall DB:", error);
+        }
+      })();
     } catch (error) {
       console.error("Error deleting message:", error);
       socket.emit("error", { message: "Failed to delete message" });
+    }
+  });
+
+  // archive message
+  socket.on("archive-chat", async (data) => {
+    try {
+      const userId = socket.userId;
+      const { chatId } = data;
+
+      const userChatsRef = db.collection("userchats").doc(userId);
+      const userChatsDoc = await userChatsRef.get();
+
+      if (userChatsDoc.exists) {
+        const userChatsData = userChatsDoc.data();
+        const chats = userChatsData.chats || [];
+
+        const chatIndex = chats.findIndex((c) => c.chatId === chatId);
+
+        if (chatIndex !== -1) {
+          chats[chatIndex].isArchived = true;
+          chats[chatIndex].archivedAt = Date.now();
+          await userChatsRef.update({ chats });
+          socket.emit("chat-archived-success", { chatId });
+        }
+      }
+    } catch (error) {
+      console.error("Error archiving chat:", error);
+      socket.emit("error", { message: "Failed to archive chat" });
+    }
+  });
+
+  socket.on("unarchive-chat", async (data) => {
+    try {
+      const userId = socket.userId;
+      const { chatId } = data;
+
+      const userChatsRef = db.collection("userchats").doc(userId);
+      const userChatsDoc = await userChatsRef.get();
+
+      if (userChatsDoc.exists) {
+        const userChatsData = userChatsDoc.data();
+        const chats = userChatsData.chats || [];
+
+        const chatIndex = chats.findIndex((c) => c.chatId === chatId);
+
+        if (chatIndex !== -1) {
+          delete chats[chatIndex].isArchived;
+          delete chats[chatIndex].archivedAt;
+          await userChatsRef.update({ chats });
+          socket.emit("chat-unarchived-success", { chatId });
+        }
+      }
+    } catch (error) {
+      console.error("Error unarchiving chat:", error);
+      socket.emit("error", { message: "Failed to unarchive chat" });
     }
   });
 };

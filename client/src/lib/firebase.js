@@ -51,7 +51,7 @@ if (!isFirebaseConfigured) {
     functions = getFunctions(app);
 
     if (window.location.hostname === "localhost") {
-      connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+      //connectFunctionsEmulator(functions, "127.0.0.1", 5001);
       // connectFirestoreEmulator(db, "127.0.0.1", 8080);
     }
 

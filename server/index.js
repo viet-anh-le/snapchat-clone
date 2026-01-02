@@ -6,6 +6,7 @@ const socketInit = require("./socket");
 
 const app = express();
 const server = http.createServer(app);
+const initCronJob = require("./jobs/cleanupJob");
 
 // CORS configuration
 const io = new Server(server, {
@@ -26,6 +27,9 @@ app.use(express.json());
 // Socket.io connection handler
 socketInit(io);
 app.set("socketio", io);
+
+// Cron job
+initCronJob();
 
 // ========== REST API ROUTES ==========
 
