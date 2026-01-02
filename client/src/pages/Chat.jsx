@@ -460,6 +460,22 @@ export default function Chat() {
   }, [receiver?.uid]);
 
   useEffect(() => {
+    if (!receiver?.uid || !user?.uid) return;
+
+    const receiverRef = doc(db, "users", receiver.uid);
+
+    const unsubscribe = onSnapshot(receiverRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const isBlocked = data.blocked?.includes(user.uid);
+        setIsBlockedByThem(!!isBlocked);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [receiver?.uid, user?.uid]);
+
+  useEffect(() => {
     const handleMessageDeleted = (data) => {
       const { chatId, messageId, updatedMessage } = data;
       if (chatId === selectedChatId) {
