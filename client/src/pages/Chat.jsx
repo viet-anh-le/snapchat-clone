@@ -11,7 +11,6 @@ import {
   collection,
   query,
   orderBy,
-  getDocs,
   onSnapshot,
 } from "firebase/firestore";
 import {
@@ -45,14 +44,55 @@ const formatMessageTime = (timestamp) => {
   });
 };
 
-const mergeMessages = (currentMessages, newMessages) => {
-  const msgMap = new Map();
-  currentMessages.forEach((msg) => msgMap.set(msg.id, msg));
-  const incoming = Array.isArray(newMessages) ? newMessages : [newMessages];
-  incoming.forEach((msg) => msgMap.set(msg.id, msg));
-  return Array.from(msgMap.values()).sort((a, b) => a.createdAt - b.createdAt);
-};
+export const mergeMessages = (currentMessages, incomingMessages) => {
+  const getSafeTime = (t) => {
+    if (!t) return 0;
+    if (typeof t === "number") return t;
+    if (typeof t.toMillis === "function") return t.toMillis();
+    if (t instanceof Date) return t.getTime();
+    return 0;
+  };
 
+  const msgMap = new Map();
+
+  currentMessages.forEach((msg) => {
+    if (msg.id) msgMap.set(msg.id, msg);
+  });
+
+  const incoming = Array.isArray(incomingMessages)
+    ? incomingMessages
+    : [incomingMessages];
+
+  incoming.forEach((newMsg) => {
+    if (!newMsg.id) return;
+
+    if (msgMap.has(newMsg.id)) {
+      const existingMsg = msgMap.get(newMsg.id);
+
+      const oldTime = getSafeTime(existingMsg.createdAt);
+      const newTime = getSafeTime(newMsg.createdAt);
+
+      if (oldTime > 0 && Math.abs(newTime - oldTime) < 60000) {
+        msgMap.set(newMsg.id, {
+          ...newMsg,
+          createdAt: existingMsg.createdAt,
+        });
+        return;
+      }
+    }
+    msgMap.set(newMsg.id, newMsg);
+  });
+
+  return Array.from(msgMap.values()).sort((a, b) => {
+    const timeA = getSafeTime(a.createdAt);
+    const timeB = getSafeTime(b.createdAt);
+
+    if (timeA !== timeB) {
+      return timeA - timeB;
+    }
+    return (a.id || "").localeCompare(b.id || "");
+  });
+};
 export default function Chat() {
   const { close, setClose, selectedChatId, receiver, setReceiver } =
     useContext(ChatContext);
@@ -72,7 +112,7 @@ export default function Chat() {
   const messagesContainerRef = useRef(null);
   const prevMessagesLength = useRef(0);
 
-  const isBlockedByMe = user?.blocked?.includes(receiver?.uid);
+  const [isBlockedByMe, setIsBlockedByMe] = useState(false);
   const [isBlockedByThem, setIsBlockedByThem] = useState(false);
   const isInterrupted = isBlockedByMe || isBlockedByThem;
 
@@ -278,25 +318,19 @@ export default function Chat() {
       }
     );
 
-    const loadChatData = async () => {
-      try {
-        const messagesRef = collection(db, "chats", selectedChatId, "messages");
-        const q = query(messagesRef, orderBy("createdAt", "asc"));
-        const querySnapshot = await getDocs(q);
+    const q = query(
+      collection(db, "chats", selectedChatId, "messages"),
+      orderBy("createdAt", "asc")
+    );
 
-        const historyMsgs = [];
-        querySnapshot.forEach((doc) => {
-          historyMsgs.push({ id: doc.id, ...doc.data() });
-        });
-        setMessages((prevMessages) => {
-          return mergeMessages(prevMessages, historyMsgs);
-        });
-      } catch (error) {
-        console.error("Error loading chat data:", error);
-      }
-    };
+    const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+      const dbMessages = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
-    loadChatData();
+      setMessages((prev) => mergeMessages(prev, dbMessages));
+    });
 
     const unsubscribeNewMessage = websocketService.onNewMessage((data) => {
       if (data.chatId === currentChatId) {
@@ -350,6 +384,7 @@ export default function Chat() {
     setupWebSocket();
 
     return () => {
+      unsubscribeSnapshot();
       unsubscribeNewMessage();
       unsubscribeChatMetadata();
       unsubscribeSnapViewed();
@@ -443,20 +478,37 @@ export default function Chat() {
   }, [selectedChatId]);
 
   useEffect(() => {
-    if (receiver && user) {
-      const isBlocked = receiver.blocked?.includes(user.uid) || false;
-      setIsBlockedByThem(isBlocked);
-    }
-  }, [receiver, user]);
+    if (!user?.uid || !receiver?.uid) return;
+    const currentUserRef = doc(db, "users", user.uid);
+    const unsubMe = onSnapshot(currentUserRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const blockedList = data.blocked || [];
+        setIsBlockedByMe(blockedList.includes(receiver.uid));
+      }
+    });
+
+    const receiverRef = doc(db, "users", receiver.uid);
+    const unsubThem = onSnapshot(receiverRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const blockedList = data.blocked || [];
+        setIsBlockedByThem(blockedList.includes(user.uid));
+      }
+    });
+
+    return () => {
+      unsubMe();
+      unsubThem();
+    };
+  }, [user?.uid, receiver?.uid]);
 
   useEffect(() => {
     const handleRelationshipUpdate = (data) => {
       if (data.byUser === receiver?.uid) {
         if (data.type === "blocked") {
-          setIsBlockedByThem(true);
           message.error("Bạn đã bị người dùng này chặn.");
         } else if (data.type === "unblocked") {
-          setIsBlockedByThem(false);
           message.success("Bạn đã được bỏ chặn.");
         }
       }
