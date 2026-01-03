@@ -8,7 +8,7 @@ import ChatList from "./ChatList";
 export default function SideBar() {
   return (
     <>
-      <div className="flex flex-col bg-[#121212] border-r border-gray-700 h-full w-full p-2 max-w-[340px] border border-r-gray-700">
+      <div className="flex flex-col bg-[#121212] border-r border-gray-700 h-screen w-full p-2 max-w-[340px] border border-r-gray-700">
         <Header />
         <Space.Compact className="my-4" id="search-input">
           <Input placeholder="Search" className="input" />

@@ -8,3 +8,25 @@
   left: 0;
   z-index: 102;
 }
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #424242;
+  border-radius: 20px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #616161;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #424242 transparent;
+}

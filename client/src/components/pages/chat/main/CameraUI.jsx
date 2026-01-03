@@ -140,7 +140,7 @@ const CameraUI = () => {
               <div className="absolute bottom-0 w-full p-6 flex flex-col items-center z-20 bg-linear-to-t from-black/60 to-transparent">
                 {!capturedImage ? (
                   <>
-                    <div className="flex gap-4 mb-4 overflow-x-auto w-full justify-start px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    <div className="flex gap-4 mb-4 overflow-x-auto w-full justify-center px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                       {FILTERS.map((f) => (
                         <button
                           key={f.id}
@@ -176,17 +176,10 @@ const CameraUI = () => {
                     />
 
                     <div className="flex items-center gap-8">
-                      <div className="w-10 h-10" />
                       <button
                         onClick={handleCapture}
                         className="w-20 h-20 rounded-full border-[6px] border-white hover:bg-white/20 active:scale-95 transition-all"
                       />
-                      <button
-                        onClick={() => setIsFrontCamera(!isFrontCamera)}
-                        className="w-10 h-10 rounded-full bg-gray-800/50 flex items-center justify-center border border-white/30"
-                      >
-                        <RefreshCw className="text-white" />
-                      </button>
                     </div>
                   </>
                 ) : (
