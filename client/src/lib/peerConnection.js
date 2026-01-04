@@ -101,7 +101,7 @@ export const initializeListeners = async (userId, roomId) => {
           pc.signalingState === "have-remote-offer";
         if (!isReady) {
           console.warn(
-            "⚠️ Bỏ qua Offer vì state không phù hợp:",
+            "Bỏ qua Offer vì state không phù hợp:",
             pc.signalingState
           );
           return;
@@ -112,7 +112,7 @@ export const initializeListeners = async (userId, roomId) => {
           pc.remoteDescription.sdp === offer.sdp &&
           pc.remoteDescription.type === offer.type
         ) {
-          console.warn("⚠️ Bỏ qua Offer trùng lặp");
+          console.warn("Bỏ qua Offer trùng lặp");
           return;
         }
 
@@ -127,9 +127,7 @@ export const initializeListeners = async (userId, roomId) => {
             pc.signalingState
           );
         }
-      } catch (error) {
-        console.error("❌ Lỗi khi xử lý Offer:", error);
-      }
+      } catch (error) {}
     }
   });
 
@@ -180,7 +178,6 @@ export const initializeListeners = async (userId, roomId) => {
       if (pc.remoteDescription) {
         pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
       } else {
-        console.warn("⏳ Candidate đến sớm, đang đưa vào hàng đợi...");
         if (!candidateQueue[fromUserId]) candidateQueue[fromUserId] = [];
         candidateQueue[fromUserId].push(candidate);
       }
