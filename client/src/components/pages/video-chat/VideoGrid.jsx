@@ -7,6 +7,15 @@ const VideoGrid = ({ isCameraOff }) => {
     (state) => state.userState
   );
 
+  async function forceGetStream() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+
+    return stream;
+  }
+
   const allParticipants = [
     ...(currentUser
       ? Object.entries(currentUser).map(([id, data]) => ({
@@ -21,6 +30,11 @@ const VideoGrid = ({ isCameraOff }) => {
       : []),
     ...Object.entries(participants).map(([id, data]) => {
       if (!data.stream) console.warn(`Participant ${id} missing stream!`);
+      if (!data.stream && data.isMe) {
+        forceGetStream().then((stream) => {
+          dispatch(updateMainStream(stream));
+        });
+      }
 
       return {
         id,
@@ -55,6 +69,7 @@ const VideoGrid = ({ isCameraOff }) => {
             transition={{ duration: 0.3, delay: index * 0.1 }}
           >
             <VideoTile
+              key={participant.stream?.id || participant.id}
               participant={participant}
               isMe={participant.isMe}
               isCameraOff={

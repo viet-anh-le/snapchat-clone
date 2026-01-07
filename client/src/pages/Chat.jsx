@@ -800,10 +800,14 @@ export default function Chat() {
                       })
                     )}
                     {Array.from(typingUsers).map((userId) => {
-                      const userInfo = memberDetails[userId] || {
-                        photoURL: "/default-avatar.png",
-                        displayName: "Someone",
-                      };
+                      const isReceiver = receiver && userId === receiver.uid;
+                      const userInfo = isReceiver
+                        ? receiver
+                        : memberDetails[userId] || {
+                            photoURL: "/default-avatar.png",
+                            displayName: "Someone",
+                          };
+
                       return (
                         <TypingIndicator
                           key={userId}
